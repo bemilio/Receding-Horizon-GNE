@@ -37,7 +37,7 @@ matplotlib.use('TkAgg')
 if __name__ == '__main__':
     logging.basicConfig(filename='log.txt', filemode='w',level=logging.DEBUG)
     use_test_graph = True
-    N_random_tests = 1
+    N_random_tests = 5
     N_agents=2   # N agents
 
     A_single_agent = torch.tensor([[1., 1.], [0.,1.]])
@@ -53,30 +53,35 @@ if __name__ == '__main__':
     theta = 0.0
 
     # cost weights
-    weight_x = 1
-    weight_u = 0
-    weight_terminal_cost = 0
+    weight_x = 0.001
+    weight_u = 1
+    weight_terminal_cost = 1
 
-    T_horiz_to_test= [10]
-    T_simulation=20
+    T_horiz_to_test= [2, 8] # This is actually T+1, so for T=1 insert 2
+    T_simulation=30
     np.random.seed(1)
-    N_iter=10000
+    N_iter=20000
     # containers for saved variables
-
+    # print("Warning! the coupled cost is set to zero!")
     x_store = {}
+    x_traj_store = {}
     u_store = {}
+    u_traj_store = {}
+    cost_store = {}
+    competition_evolution = {}
     for test in range(N_random_tests):
         # Initial state
-        initial_state = torch.tensor(-0.5 + 2*np.random.random_sample(size=[N_agents, n_states]))
+        initial_state_test = torch.tensor(-0.5 + 2*np.random.random_sample(size=[N_agents, n_states]))
         print("Initializing game for test " + str(test) + " out of " + str(N_random_tests))
         logging.info("Initializing game for test " + str(test) + " out of " + str(N_random_tests))
         ### Begin tests
         for T_horiz in T_horiz_to_test:
+            initial_state = initial_state_test # bring system back to initial state anytime we test another horizon
             for t in range(T_simulation):
                 print("Initializing game for timestep " + str(t+1) + " out of " + str(T_simulation))
                 logging.info("Initializing game for timestep " + str(t+1) + " out of " + str(T_simulation))
                 game = Game(T_horiz, A, B, weight_x, weight_u, initial_state, add_terminal_cost=True,
-                            add_destination_constraint=False, xi=1, problem_type="hyperadversarial", weight_terminal_cost=weight_terminal_cost)
+                            add_destination_constraint=False, xi=1, problem_type="pairwise_quadratic", weight_terminal_cost=weight_terminal_cost)
                 if t==0:
                     print("The game has " + str(N_agents) + " agents; " + str(
                         game.n_opt_variables) + " opt. variables per agent; " \
@@ -90,7 +95,11 @@ if __name__ == '__main__':
                         game.n_shared_ineq_constr) + " shared ineq. constraints")
                     # Initialize storing
                     x_store.update({(test, T_horiz) : torch.zeros(N_agents, n_states, T_simulation)})
+                    x_traj_store.update({(test, T_horiz): torch.zeros(N_agents, n_states*T_horiz, T_simulation)})
                     u_store.update({(test, T_horiz): torch.zeros(N_agents, n_inputs, T_simulation)})
+                    u_traj_store.update({(test, T_horiz): torch.zeros(N_agents, n_inputs * T_horiz, T_simulation)})
+                    cost_store.update({(test, T_horiz): torch.zeros(N_agents, 1, T_simulation)})
+                    competition_evolution.update({(test, T_horiz): torch.zeros(N_agents, 1, T_simulation)})
                 print("Done")
                 x_store[(test, T_horiz)][:, :, t] = initial_state
                 alg = FRB_algorithm(game, beta=beta, alpha=alpha, theta=theta)
@@ -121,21 +130,19 @@ if __name__ == '__main__':
                 # NI_value = game.compute_Nikaido_Isoada(x)
                 # print("NI value: " + str(NI_value.item()))
                 initial_state = game.get_next_state_from_opt_var(x).squeeze(dim=2)
-                input_gne = game.get_control_action_from_opt_var(x).squeeze(dim=2)
+                input_gne = game.get_next_control_action_from_opt_var(x).squeeze(dim=2)
                 u_store[(test, T_horiz)][:, :, t] = input_gne
+                x_traj_store[(test, T_horiz)][:,:,t] = game.get_all_states_from_opt_var(x).squeeze(dim=2)
+                u_traj_store[(test, T_horiz)][:, :, t] = game.get_all_control_actions_from_opt_var(x).squeeze(dim=2)
+                cost_store[(test, T_horiz)][:, :, t]  = c.squeeze(dim=2)
+                if t>0:
+                    competition_evolution[(test, T_horiz)][:, :, t] = game.compute_competition_variation(x, last_gne)
+                last_gne = x
 
-    # traj_x1 = np.zeros((N_agents, T_simulation))
-    # for i in range(N_agents):
-    #     traj_x1[i, :] = x_store[(0,T_horiz_to_test[0])][i, 0, :]
-    # traj_x2 = np.zeros((N_agents, T_simulation))
-    # for i in range(N_agents):
-    #     traj_x2[i, :] = x_store[(0, T_horiz_to_test[0])][i, 1, :]
-    # plt.plot(traj_x1 )
-    # plt.show(block=False)
     print("Saving results...")
     logging.info("Saving results...")
-    f = open('saved_test_result_multiperiod.pkl', 'wb')
-    pickle.dump([ x_store, u_store, N_agents, T_simulation, T_horiz_to_test ], f)
+    f = open('saved_test_result_multiperiod_total.pkl', 'wb')
+    pickle.dump([ x_store, u_store, N_agents, N_random_tests, T_simulation, T_horiz_to_test, x_traj_store, u_traj_store, cost_store, competition_evolution ], f)
     f.close()
     print("Saved")
     logging.info("Saved, job done")

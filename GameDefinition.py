@@ -28,9 +28,10 @@ class Game:
         index_x = 0
         self.problem_type=problem_type
         self.n_opt_variables = T_horiz * (self.n_states + self.n_inputs)
-        if problem_type!="congestion" and problem_type!="hyperadversarial":
+        if problem_type!="congestion" and problem_type!="hyperadversarial" and problem_type!="pairwise_quadratic":
             raise Exception("The type of the problem is not recognized")
-
+        if problem_type=="pairwise_quadratic" and self.N_agents%2!=0:
+            raise Exception("For pairwise quadratic games, the number of agents need be even")
         # Selection matrices
         self.Sx = torch.hstack((torch.eye((T_horiz-1)*self.n_states), \
                                torch.zeros((T_horiz-1)*self.n_states, self.n_states), \
@@ -82,6 +83,48 @@ class Game:
                     self.Q_adversarial_x[i,:,:] = torch.kron(vector_interactions, torch.eye(n_states))
                     self.Q_adversarial_u[i, :, :] = torch.kron(vector_interactions, torch.eye(n_inputs))
 
+        def local_cost(self, z):
+            x = torch.matmul(self.Sx, z)  # broadcasted multiplication
+            u = torch.matmul(self.Su, z)
+            if self.problem_type == "pairwise_quadratic":
+                cost_x = 0.5*self.weight_x*torch.unsqueeze(torch.pow(torch.linalg.vector_norm(x, dim=1), 2),2)
+                cost_u = 0.5*self.weight_u*torch.unsqueeze(torch.pow(torch.linalg.vector_norm(u, dim=1), 2),2)
+            return torch.add(cost_x, cost_u)
+
+        def coupled_cost(self, z):
+            x = torch.matmul(self.Sx, z)  # broadcasted multiplication
+            u = torch.matmul(self.Su, z)
+            if self.problem_type == "pairwise_quadratic":
+                n_agents = x.size(0)
+                # each pair has cost J_i = x_i^2 + x_{i+1}^2 + 2 (x_i x_{i+1}) ; J_{i+1}= x_i^2 + x_{i+1}^2 - 2 (x_i x_{i+1}) ;
+                permutation_indexes_plus = np.zeros(int(n_agents / 2))
+                permutation_indexes_minus = np.zeros(int(n_agents / 2))
+                permutation_indexes_plus[:] = range(0, n_agents - 1, 2)  # indexes of agents with plus signs
+                permutation_indexes_minus[:] = range(1, n_agents, 2)  # indexes of agents with minus signs
+                cost_x = torch.zeros(n_agents, 1, 1)
+                cost_u = torch.zeros(n_agents, 1, 1)
+                n_agents = x.size(0)
+                # each pair has cost J_i= x_i^2 + x_{i+1}^2 + 2 (x_i x_{i+1}) ; J_{i+1}= x_i^2 + x_{i+1}^2 - 2 (x_i x_{i+1}) ;
+                permutation_indexes_plus = np.zeros(int(n_agents / 2))
+                permutation_indexes_minus = np.zeros(int(n_agents / 2))
+                permutation_indexes_plus[:] = range(0, n_agents - 1, 2)  # indexes of agents with plus signs
+                permutation_indexes_minus[:] = range(1, n_agents, 2)  # indexes of agents with minus signs
+                cost_x = torch.zeros(n_agents, 1, 1)
+                cost_u = torch.zeros(n_agents, 1, 1)
+                cost_x[permutation_indexes_plus, :, :] =  self.weight_x * ( \
+                            torch.bmm(torch.transpose(x[permutation_indexes_plus, :, :], 1, 2),
+                                      x[permutation_indexes_minus, :, :]))
+                cost_x[permutation_indexes_minus, :, :] = - self.weight_x * ( \
+                            torch.bmm(torch.transpose(x[permutation_indexes_plus, :, :], 1, 2),
+                                      x[permutation_indexes_minus, :, :]))
+                cost_u[permutation_indexes_plus, :, :] =  self.weight_u * ( \
+                            torch.bmm(torch.transpose(u[permutation_indexes_minus, :, :], 1, 2),
+                                      u[permutation_indexes_plus, :, :]))
+                cost_u[permutation_indexes_minus, :, :] = -self.weight_u * ( \
+                            torch.bmm(torch.transpose(u[permutation_indexes_plus, :, :], 1, 2),
+                                      u[permutation_indexes_minus, :, :]))
+            return torch.add(cost_x, cost_u)
+
         def forward(self, z):
             x = torch.matmul(self.Sx, z) # broadcasted multiplication
             u = torch.matmul(self.Su, z)
@@ -99,7 +142,8 @@ class Game:
                 cost_x = self.weight_x *torch.bmm(torch.transpose(x, 1, 2), torch.matmul(self.Q_adversarial_x, torch.reshape(x,(-1,1))))
                 cost_u = self.weight_u *torch.bmm(torch.transpose(u, 1, 2), torch.matmul(self.Q_adversarial_u, torch.reshape(u,(-1,1))))
                 return torch.add(torch.add(cost_x, cost_u), term_cost)
-
+            if self.problem_type == "pairwise_quadratic":
+                return torch.add(torch.add(self.coupled_cost(z), self.local_cost(z)), term_cost)
 
     class GameMapping(torch.nn.Module):
         def __init__(self, N_agents, xi,weight_x, weight_u, Q_terminal_cost, Sx, Su, SxF, problem_type):
@@ -146,6 +190,22 @@ class Game:
             if self.problem_type == "hyperadversarial":
                 x_grad = self.weight_x * torch.matmul(self.Q_adversarial_x, torch.reshape(x,(-1,1)))
                 u_grad = self.weight_u * torch.matmul(self.Q_adversarial_u, torch.reshape(u,(-1,1)))
+            if self.problem_type == "pairwise_quadratic":
+                n_agents = x.size(0)
+                # each pair has cost J_i= x_i^2 + x_{i+1}^2 + 2 (x_i x_{i+1}) ; J_{i+1}= x_i^2 + x_{i+1}^2 - 2 (x_i x_{i+1}) ;
+                permutation_indexes_plus=np.zeros(int(n_agents/2))
+                permutation_indexes_minus = np.zeros(int(n_agents/2))
+                permutation_indexes_plus[:]=range(0,n_agents-1,2) # indexes of agents with plus signs
+                permutation_indexes_minus[:]=range(1,n_agents,2) # indexes of agents with minus signs
+                x_grad=torch.zeros(x.size())
+                u_grad=torch.zeros(u.size())
+                x_grad[permutation_indexes_plus,:,:] = self.weight_x * (x[permutation_indexes_plus,:,:] + x[permutation_indexes_minus,:,:])
+                x_grad[permutation_indexes_minus, :, :] = self.weight_x * (
+                            x[permutation_indexes_minus, :, :] - x[permutation_indexes_plus, :, :])
+                u_grad[permutation_indexes_plus, :, :] = self.weight_u * (
+                            u[permutation_indexes_plus, :, :] + u[permutation_indexes_minus, :, :])
+                u_grad[permutation_indexes_minus, :, :] = self.weight_u * (
+                        u[permutation_indexes_minus, :, :] - u[permutation_indexes_plus, :, :])
             return torch.add(torch.add(torch.matmul(torch.transpose(self.Sx, 0,1), x_grad), \
                              torch.matmul(torch.transpose(self.Su, 0,1), u_grad)), torch.matmul(torch.transpose(self.SxF, 0,1), term_nabla))
 
@@ -200,9 +260,16 @@ class Game:
             A_ineq_shared = torch.zeros(N, n_shared_ineq_constr, self.n_opt_variables)
             b_ineq_shared = torch.zeros(N, n_shared_ineq_constr, 1)
             i_constr = 0
+        if self.problem_type == "pairwise_quadratic":
+            # no constraint
+            n_shared_ineq_constr = 1
+            A_ineq_shared = torch.zeros(N, n_shared_ineq_constr, self.n_opt_variables)
+            b_ineq_shared = torch.zeros(N, n_shared_ineq_constr, 1)
+            i_constr = 0
         return A_ineq_shared, b_ineq_shared
 
     def best_response(self, z):
+        # Does not work
         br = bestResponse.bestResponse(z, self.J, self.F, self.A_ineq_loc, self.b_ineq_loc, self.A_eq_loc,
                                                       self.b_eq_loc, \
                                                       self.A_ineq_shared, self.b_ineq_shared)
@@ -210,19 +277,56 @@ class Game:
         return sum_J_br, x_br
 
     def compute_Nikaido_Isoada(self, z):
+        # Does not work
         cost_total = torch.sum(self.J(z), 0)
         cost_best_response, x_br = self.best_response(z)
         NI_value = cost_total - cost_best_response
         return NI_value
-    
-    def get_control_action_from_opt_var(self, z):
+
+    def get_next_control_action_from_opt_var(self, z):
         u = torch.matmul(self.Su, z)
         return u[:,0:self.n_inputs,:]
 
     def get_next_state_from_opt_var(self, z):
         x = torch.matmul(self.Sx, z)
         return x[:,0:self.n_states,:]
-    
+
+    def get_all_states_from_opt_var(self, z):
+        x = torch.matmul(self.Sx, z)
+        xF = torch.matmul(self.SxF, z)
+        return torch.cat((x,xF), 1)
+
+    def get_all_control_actions_from_opt_var(self, z):
+        u = torch.matmul(self.Su, z)
+        return u
+
+    # This function is used to compute a term on the Nikaido-Isoada-based lyapunov function relative to how the coupled costs evolve between GNEs
+    def compute_competition_variation(self,new_gne,old_gne):
+        #The cost should ACTUALLy be computed with shortened trajectories (excluding T+1).
+        # However, this requires code refactoring - so we just set the last state and inputs to 0, with the assumption that the cost at 0 is 0, as a workaround
+        x_old_from_1_to_T = torch.matmul(self.Sx, old_gne)  # This excludes initial state and xF
+        # For the new GNE state, we need to exclude the last x (as that needs to be compared separately with the terminal cost of xF_old).
+        # We then need to prepend the initial state (as that needs to be compared to x_1_old), which is exactly x_1_old
+        x_0_new = x_old_from_1_to_T[:,0:self.n_states, :]
+        x_new_from_1_to_T = torch.cat(( x_0_new, torch.matmul(self.Sx, new_gne)[:, :-self.n_states, :] ), dim=1 )
+        # For the old GNE input, we need to cut the 0-input (as that needs not be compared, we only need to assume the cost to be pos.def.).
+        # Then we exclude the last input (as that would be a non-existing value at T+1)
+        u_old_from_1_to_T = torch.cat( (torch.matmul(self.Su, old_gne)[:,self.n_inputs:,:], torch.zeros(self.N_agents, self.n_inputs, 1)), dim=1 )
+        # For the new GNE input, we need to exclude the last input (as that needs to be compared separately with the terminal cost of xF_old).
+        u_new_from_1_to_T = torch.cat( (torch.matmul(self.Su, new_gne)[:, :-self.n_inputs, :], torch.zeros(self.N_agents, self.n_inputs, 1)), dim=1 )
+
+        strategy_old_along_path = torch.matmul(torch.transpose(self.Sx,0,1), x_old_from_1_to_T) \
+                                  + torch.matmul(torch.transpose(self.Su,0,1), u_old_from_1_to_T)
+        strategy_new_along_path = torch.matmul(torch.transpose(self.Sx, 0, 1), x_new_from_1_to_T) \
+                                  + torch.matmul(torch.transpose( self.Su, 0, 1), u_new_from_1_to_T)
+        # Compute the value: \sum_i shared_cost_i(old played against new) - shared_cost_i(old played against old)
+        variation = 0
+        for i in range(self.N_agents):
+            hybrid_strategy = torch.tensor(strategy_new_along_path)
+            hybrid_strategy[i,:,:] = strategy_old_along_path[i,:,:]
+            variation = variation + self.J.coupled_cost(hybrid_strategy)[i,:,:] - self.J.coupled_cost(strategy_old_along_path)[i,:,:]
+        return variation
+
     #
     # def compute_optimal_cost_given_opponents(self):
     #
