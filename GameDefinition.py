@@ -325,6 +325,8 @@ class Game:
             hybrid_strategy = torch.tensor(strategy_new_along_path)
             hybrid_strategy[i,:,:] = strategy_old_along_path[i,:,:]
             variation = variation + self.J.coupled_cost(hybrid_strategy)[i,:,:] - self.J.coupled_cost(strategy_old_along_path)[i,:,:]
+        if variation > 0.1:
+            print("Pause..")
         return variation
 
     #

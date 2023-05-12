@@ -34,8 +34,8 @@ class FRB_algorithm:
     def run_once(self):
         x = self.x
         dual = self.dual
-        A_i = 10* self.game.A_ineq_shared # Scaling the constraints apparently helps convergence
-        b_i = 10* self.game.b_ineq_shared
+        A_i = self.game.A_ineq_shared # Scaling the constraints apparently helps convergence
+        b_i = self.game.b_ineq_shared
         r = 2 * self.game.F(x) - self.game.F(self.x_last)
         x_new, status = self.prox(x - self.alpha * (r + torch.matmul(torch.transpose(A_i, 1, 2), self.dual )) + self.theta * (x - self.x_last))
         d = 2 * torch.bmm(A_i, x_new) - torch.bmm(A_i, x) - b_i
@@ -46,6 +46,7 @@ class FRB_algorithm:
         dual_new = torch.maximum( dual + self.beta * d_avg + self.theta * (dual - self.dual_last) , torch.zeros(dual.size()))
         self.dual_last = dual
         self.dual = dual_new
+        return status
 
     def get_state(self):
         residual = self.compute_residual()

@@ -42,21 +42,21 @@ if __name__ == '__main__':
         job_id = int(sys.argv[2])
     random.seed(seed)
 
+
     logging.basicConfig(filename='log.txt', filemode='w',level=logging.DEBUG)
     use_test_graph = True
-    N_random_initial_states = 10
-    N_agents=random.choice(range(2,8,2))  # N agents
+    N_random_initial_states = 1
+    N_agents= 2 # random.choice(range(2,8,2))  # N agents
 
-    n_states = random.choice(range(2,6))
-    n_inputs = int(n_states) / 2
+    n_states = 1 # random.choice(range(2,6))
 
     # Generate random system
     is_controllable = False
-    n_inputs = int(np.floor(n_states/2))
+    n_inputs = 1 # int(n_states) / 2
     attempt_controllable = 0
     while not is_controllable and attempt_controllable < 10:
-        A_single_agent = torch.tensor(-0.5 + 3 * np.random.random_sample(size=[n_states, n_states]))
-        B_single_agent = torch.tensor(-0.5 + 3 * np.random.random_sample(size=[n_states, n_inputs]))
+        A_single_agent = torch.tensor(1.)#-0.5 + 3 * np.random.random_sample(size=[n_states, n_states]))
+        B_single_agent = torch.tensor(1.) #-0.5 + 3 * np.random.random_sample(size=[n_states, n_inputs]))
         A = torch.broadcast_to(A_single_agent, (N_agents, n_states, n_states))  # Double integrators
         B = torch.broadcast_to(B_single_agent, (N_agents, n_states, n_inputs))
         is_controllable = np.linalg.matrix_rank(control.ctrb(A_single_agent, B_single_agent)) == n_states
@@ -76,12 +76,12 @@ if __name__ == '__main__':
     # theta = 0.0
 
     # cost weights
-    weight_x = np.random.random_sample()
-    weight_u = np.random.random_sample()
+    weight_x = 1 #np.random.random_sample()
+    weight_u = 1 # np.random.random_sample()
     weight_terminal_cost = 0
 
-    T_horiz_to_test= [5,100] # This is actually T+1, so for T=1 insert 2
-    T_simulation=50
+    T_horiz_to_test= [20] # This is actually T+1, so for T=1 insert 2
+    T_simulation=10
     N_iter=10**5
     # containers for saved variables
     # print("Warning! the coupled cost is set to zero!")
@@ -95,7 +95,7 @@ if __name__ == '__main__':
     solver_problem = {}
     for test in range(N_random_initial_states):
         # Initial state
-        initial_state_test = torch.tensor(-0.5 + 2*np.random.random_sample(size=[N_agents, n_states]))
+        initial_state_test = torch.tensor(1. + 0*np.random.random_sample(size=[N_agents, n_states]))
         print("Initializing game for test " + str(test) + " out of " + str(N_random_initial_states))
         logging.info("Initializing game for test " + str(test) + " out of " + str(N_random_initial_states))
         ### Begin tests
@@ -104,7 +104,7 @@ if __name__ == '__main__':
             for t in range(T_simulation):
                 print("Initializing game for timestep " + str(t+1) + " out of " + str(T_simulation))
                 logging.info("Initializing game for timestep " + str(t+1) + " out of " + str(T_simulation))
-                game = Game(T_horiz, A, B, weight_x, weight_u, initial_state, add_terminal_cost=True,
+                game = Game(T_horiz, A, B, weight_x, weight_u, initial_state, add_terminal_cost=False,
                             add_destination_constraint=False, xi=1, problem_type="pairwise_quadratic", weight_terminal_cost=weight_terminal_cost)
                 if t==0:
                     print("The game has " + str(N_agents) + " agents; " + str(

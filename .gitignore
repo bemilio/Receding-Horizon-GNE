@@ -1,0 +1,10 @@
+
+.DS_Store
+*.xml
+*.pdf
+*.png
+*.pyc
+__pycache__/GameDefinition.cpython-310.pyc
+*.ggb
+*.pkl
+log.txt
