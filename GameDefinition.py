@@ -8,7 +8,6 @@ torch.set_default_dtype(torch.float64)
 
 class Game:
     # N: number of agents
-    # final_destinations: vector of size N containing the destination of each agent
     # initial_state: matrix of size n_nodes x N. contains the initial probability distribution of each agent over the nodes.
     #type define type of game, can be congestion (J_i = ell(x) x) or hyperadversarial (J_1 = -J_2 = x_1 x_2)
     def __init__(self, T_horiz, A, B, weight_x , weight_u, initial_state, add_terminal_cost=False,
