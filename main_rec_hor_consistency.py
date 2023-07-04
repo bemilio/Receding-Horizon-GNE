@@ -2,7 +2,7 @@ import numpy as np
 import networkx as nx
 # import torch
 import pickle
-from dyngames import LQ_decoupled
+from games.dyngames import LQ_decoupled
 import matplotlib.pyplot as plt
 import time
 import logging
