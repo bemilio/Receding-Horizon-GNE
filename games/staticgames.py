@@ -29,11 +29,12 @@ class LinearQuadratic:
         if test:
             N, n_opt_var, Q, q, A_ineq_shared, b_ineq_shared, \
                 A_ineq_loc, b_ineq_loc, A_eq_loc, b_eq_loc, communication_graph = self.setToTestGameSetup()
-        if communication_graph is None:
-            communication_graph = nx.complete_graph(N)
+
         Q = multiagent_array(Q)
         q = multiagent_array(q)
         self.N_agents = Q.shape[0]
+        if communication_graph is None:
+            communication_graph = nx.complete_graph(self.N_agents)
         self.n_opt_variables = Q.shape[1]//self.N_agents
         # Local constraints
         self.A_ineq_loc = multiagent_array(A_ineq_loc)
@@ -57,7 +58,7 @@ class LinearQuadratic:
             self.q = q
 
         def compute(self, x):
-            x_repeated = multiagent_array(np.broadcast_to(x.squeeze(2), (x.shape[0],x.shape[0],1))) # x_repeated[i, :, :] = col_i(x_i)
+            x_repeated = multiagent_array(np.broadcast_to(x.reshape(-1,1), (x.shape[0],x.shape[0]*x.shape[1],1))) # x_repeated[i, :, :] = col_i(x_i)
             cost = x_repeated.T3D() @ (self.Q @ x_repeated + self.q)
             return cost
 
@@ -70,8 +71,8 @@ class LinearQuadratic:
             self.q = aux_mat @ q
 
         def compute(self, x):
-            # self.Q @ x.squeeze(2) does a batch multiplication of Q_i with col(x_i)
-            x_repeated = np.broadcast_to(x.squeeze(2), (x.shape[0],x.shape[0],1))
+            # This code does a batch multiplication of Q_i with col(x_i)
+            x_repeated = np.broadcast_to(x.reshape(-1,1), (x.shape[0],x.shape[0]*x.shape[1],1))
             pgrad = self.Q @ x_repeated + self.q
             return pgrad
 

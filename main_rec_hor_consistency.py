@@ -3,6 +3,7 @@ import networkx as nx
 # import torch
 import pickle
 from games.dyngames import LQ_decoupled
+from algorithms.GNE_centralized import pFB_algorithm
 import matplotlib.pyplot as plt
 import time
 import logging
@@ -12,10 +13,6 @@ import math
 
 if __name__ == '__main__':
     logging.basicConfig(filename='log.txt', filemode='w',level=logging.DEBUG)
-    use_test_game = False  # trigger 2-players sample zero-sum monotone game
-    if use_test_game:
-        print("WARNING: test game will be used.")
-        logging.info("WARNING: test game will be used.")
     if len(sys.argv) < 2:
         seed = 1
         job_id=0
@@ -26,90 +23,87 @@ if __name__ == '__main__':
     logging.info("Random seed set to  " + str(seed))
     np.random.seed(seed)
     N_it_per_residual_computation = 10
-    N_agents = 6
+    N_agents = 2
     N_random_tests = 1
 
     # parameters
-    N_iter = 100000
+    N_iter = 10000
+    n_x = 2
+    n_u = 3
+    T_hor = 2
+    T_sim = 10
+    eps = 10**(-5) # convergence threshold
 
     for test in range(N_random_tests):
         ##########################################
         #        Test case creation              #
-        ##########################################
-        game_params = LQ_decoupled(N_agents, A, B, Q, R, P,
-                         A_x_ineq_loc, b_x_ineq_loc, A_x_ineq_sh, b_x_ineq_sh,
-                         A_u_ineq_loc, b_u_ineq_loc, A_u_ineq_sh, b_u_ineq_sh,
-                         T_hor)
-        print("Initializing game for test " + str(test) + " out of " +str(N_random_tests))
-        logging.info("Initializing game for test " + str(test) + " out of " +str(N_random_tests))
+        #########################################
+        A, B, Q, R = LQ_decoupled.generate_random_game(N_agents, n_x, n_u)
+        A_x_ineq_loc = np.stack([ np.vstack((np.eye(n_x), -np.eye(n_x))) for _ in range(N_agents)], axis=0)
+        A_u_ineq_loc = np.stack([ np.vstack((np.eye(n_u), -np.eye(n_u))) for _ in range(N_agents)], axis=0)
+        b_x_ineq_loc = 10*np.ones((N_agents, 2*n_x, 1))
+        b_u_ineq_loc = 10*np.ones((N_agents, 2*n_u, 1))
+        A_x_ineq_sh = np.zeros((N_agents, 1, n_x))
+        A_u_ineq_sh = np.zeros((N_agents, 1, n_u))
+        b_x_ineq_sh = np.zeros((N_agents, 1, 1))
+        b_u_ineq_sh = np.zeros((N_agents, 1, 1))
+        P = Q
         ##########################################
         #             Game inizialization        #
         ##########################################
-        game = AggregativePartialInfo(N_agents, comm_graph, game_params.Q, game_params.q, game_params.C, game_params.D,\
-                                      game_params.A_eq_local_const, game_params.b_eq_local_const, \
-                                      game_params.A_eq_shared_const, game_params.b_eq_shared_const, game_params.A_sel_positive_vars)
-        x_0 = torch.zeros(game.N_agents, game.n_opt_variables) + \
-            torch.bmm(game_params.A_sel_positive_vars, torch.ones(game.N_agents, game.n_opt_variables, 1)).flatten(1)
+        print("Initializing game for test " + str(test) + " out of " +str(N_random_tests))
+        logging.info("Initializing game for test " + str(test) + " out of " +str(N_random_tests))
+        dyn_game = LQ_decoupled(N_agents, A, B, Q, R, P,
+                         A_x_ineq_loc, b_x_ineq_loc, A_x_ineq_sh, b_x_ineq_sh,
+                         A_u_ineq_loc, b_u_ineq_loc, A_u_ineq_sh, b_u_ineq_sh,
+                         T_hor)
+        x_0 = np.random.random_sample(size=(N_agents, n_x, 1))
         if test == 0:
-            print("The game has " + str(game.N_agents) + " agents; " + str(game.n_opt_variables) + " opt. variables per agent; " \
-                  + " local eq. constraints; " + str(game.n_shared_eq_constr) + " shared eq. constraints" )
-            logging.info("The game has " + str(game.N_agents) + " agents; " + str(game.n_opt_variables) + " opt. variables per agent; " \
-                  + str(game.A_eq_loc.size()[1]) + " local eq. constraints; " + str(game.n_shared_eq_constr) + " shared eq. constraints" )
             ##########################################
             #   Variables storage inizialization     #
             ##########################################
-            # pFB-Tichonov
-            x_store = torch.zeros(N_random_tests, game.N_agents, game.n_opt_variables)
-            dual_share_store = torch.zeros(N_random_tests, game.N_agents, game.n_shared_eq_constr)
-            dual_loc_store = torch.zeros(N_random_tests, game.N_agents, game.n_loc_eq_constr)
-            aux_store = torch.zeros(N_random_tests, game.N_agents, game.n_shared_eq_constr)
-            res_est_store = torch.zeros(N_random_tests, game.N_agents, game.n_shared_eq_constr)
-            sigma_est_store = torch.zeros(N_random_tests, game.N_agents, game.n_agg_variables)
-            residual_store = torch.zeros(N_random_tests, (N_iter // N_it_per_residual_computation))
-            local_constr_viol = torch.zeros(N_random_tests, 1)
-            shared_const_viol = torch.zeros(N_random_tests, 1)
+            x_store = np.zeros((N_random_tests, N_agents, n_x, T_sim))
+            u_store = np.zeros((N_random_tests, N_agents, n_u, T_sim))
+            u_pred_traj_store = np.zeros((N_random_tests, N_agents, T_hor, n_u, T_sim))
+            residual_store = np.zeros((N_random_tests, (N_iter // N_it_per_residual_computation), T_sim))
+            # local_constr_viol = np.zeros((N_random_tests, 1, T_sim))
+            # shared_const_viol = np.zeros((N_random_tests, 1, T_sim))
 
-        #######################################
-        #          GNE seeking                #
-        #######################################
-        # alg. initialization
-        alg = primal_dual(game)
-        # The theoretically-sound stepsize is too small!
-        # alg.set_stepsize_using_Lip_const(safety_margin=.9)
-        index_storage = 0
-        avg_time_per_it = 0
-        for k in range(N_iter):
-            if k % N_it_per_residual_computation == 0:
-                # Save performance metrics
-                x, d, d_l, aux, agg, res_est, r, c, const_viol_sh, const_viol_loc, dist_ref  = alg.get_state()
-                residual_store[test, index_storage] = r
-                print("Iteration " + str(k) + " Residual: " + str(r.item()) + " Average time: " + str(avg_time_per_it))
-                logging.info("Iteration " + str(k) + " Residual: " + str(r.item()) +" Average time: " + str(avg_time_per_it))
-                index_storage = index_storage + 1
-            #  Algorithm run
-            start_time = time.time()
-            alg.run_once()
-            end_time = time.time()
-            avg_time_per_it = (avg_time_per_it * k + (end_time - start_time)) / (k + 1)
-
-        # Store final variables
-        x, d, d_l, aux, agg, res_est, r, c, const_viol_sh, const_viol_loc, dist_ref = alg.get_state()
-        x_store[test, :, :] = x.flatten(1)
-        dual_share_store[test, :, :] = d.flatten(1)
-        dual_loc_store[test,:,:] = d_l.flatten(1)
-        aux_store[test, :, :] = aux.flatten(1)
-        sigma_est_store[test,:,:] = agg.flatten(1)
-        res_est_store[test,:,:] = res_est.flatten(1)
-        local_constr_viol[test] = const_viol_loc
-        shared_const_viol[test] = const_viol_sh
+        for t in range(T_sim):
+            game_t = dyn_game.generate_game_from_initial_state(x_0)
+            #######################################
+            #          GNE seeking                #
+            #######################################
+            # alg. initialization
+            alg = pFB_algorithm(game_t, primal_stepsize=0.1, dual_stepsize=0.1)
+            index_storage = 0
+            avg_time_per_it = 0
+            for k in range(N_iter):
+                if k % N_it_per_residual_computation == 0:
+                    # Save performance metrics
+                    u_all, d, r, c = alg.get_state()
+                    residual_store[test, index_storage, t] = r
+                    # print("Iteration " + str(k) + " Residual: " + str(r.item()))
+                    # logging.info("Iteration " + str(k) + " Residual: " + str(r.item()))
+                    index_storage = index_storage + 1
+                    if r.item()<=eps:
+                        break
+                #  Algorithm run
+                alg.run_once()
+            # Convert optimization variable into state and input
+            u_all, d, r, c = alg.get_state()
+            u_0 = dyn_game.get_first_input_from_opt_var(u_all)
+            u_store[test, :, :, t] = u_0.squeeze(2)
+            residual_store[test, index_storage,t]  = r
+            u_pred_traj_store[test, :, :, :, t] = dyn_game.get_predicted_input_trajectory_from_opt_var(u_all)
+            # Evolve state
+            x_0 = A @ x_0 + B @ u_0
+            x_store[test, :, :, t] = x_0.squeeze(2)
 
     print("Saving results...")
     logging.info("Saving results...")
     f = open('saved_test_result_'+ str(job_id) + ".pkl", 'wb')
-    pickle.dump([ x_store, residual_store, dual_share_store, dual_loc_store,
-                  local_constr_viol, shared_const_viol,
-                  loc_const_viol_tvar, shared_const_viol_tvar,
-                  distance_from_optimal_tvar, game_params.edge_to_index, N_iter_per_timestep ], f)
+    pickle.dump([ x_store, u_store, residual_store, u_pred_traj_store], f)
     f.close()
     print("Saved")
     logging.info("Saved, job done")
