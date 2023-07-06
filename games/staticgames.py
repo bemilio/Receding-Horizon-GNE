@@ -9,8 +9,15 @@ class multiagent_array(np.ndarray):
     def __new__(cls, input_array):
         obj = np.asarray(input_array).view(cls)
         return obj
+
     def T3D(self):
         return self.transpose((0,2,1))
+
+def batch_mult_with_coulumn_stack(Q, x):
+    # Let Q be a stack of matrices, i.e. Q[i]\in\R^{nxm}
+    # and x be a stack of vectors, i.e. x[i]\in\R^{m_i} s.t. \sum m_i = m.
+    # This function does a batch multiplication of Q_i with col(x_i)
+    return Q @ np.broadcast_to(x.reshape(-1, 1), (x.shape[0], x.shape[0] * x.shape[1], 1))
 
 class LinearQuadratic:
     # Define game with quadratic cost and lin constraints where each agent has the same number of opt. variables
@@ -71,9 +78,7 @@ class LinearQuadratic:
             self.q = aux_mat @ q
 
         def compute(self, x):
-            # This code does a batch multiplication of Q_i with col(x_i)
-            x_repeated = np.broadcast_to(x.reshape(-1,1), (x.shape[0],x.shape[0]*x.shape[1],1))
-            pgrad = self.Q @ x_repeated + self.q
+            pgrad = batch_mult_with_coulumn_stack(self.Q, x) + self.q
             return pgrad
 
         def get_strMon_Lip_constants(self):

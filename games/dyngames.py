@@ -2,6 +2,7 @@ import numpy as np
 import scipy.linalg
 from scipy.linalg import block_diag
 from . import staticgames
+from .staticgames import batch_mult_with_coulumn_stack
 import control
 from copy import copy
 
@@ -112,17 +113,21 @@ class LQ_decoupled:
         N_agents = 2
         n_x = 2
         n_u = 1
-        A = np.stack([np.array([[1, 1], [0, 1]]) for _ in range(N_agents)])
+        # A = np.stack([np.array([[1]]) for _ in range(N_agents)])
+        # B = np.stack([np.array([[1]]) for _ in range(N_agents)])
+        A = np.stack([np.array([[.9, 1], [0, 1]]) for _ in range(N_agents)])
         B = np.stack([np.array([[0], [1]]) for _ in range(N_agents)])
+        pattern = np.zeros((N_agents, N_agents, N_agents))
+        for i in range(N_agents):
+            pattern[i,i,i] = 1
 
-        Q = np.vstack([np.hstack([np.eye(2), np.zeros((2,2))]),
-                       np.hstack([np.zeros((2,2)), np.zeros((2,2))])])
-        R = np.stack([np.eye(1) for _ in range(N_agents)])
-
-        A_all = block_diag(A[i] for i in range(N_agents))
-        B_all = block_diag(B[i] for i in range(N_agents))
-
-        P_ii = np.stack([ scipy.linalg.solve_discrete_are(A_all, B_all, Q[i], R[i]) for i in range(N_agents) ] )
+        Q = np.kron(pattern, np.eye(n_x))
+        R = np.kron(pattern, np.eye(n_u))
+        # P_i is a block matrix where the only non-zero element is on the diagonal and it is the solutions of the local DARE
+        P_ii = np.stack([ scipy.linalg.solve_discrete_are(A[i], B[i], Q[i][i*n_x:(i+1)*n_x, i*n_x:(i+1)*n_x], R[i][i*n_u:(i+1)*n_u, i*n_u:(i+1)*n_u]) for i in range(N_agents) ] )
+        P = np.zeros((N_agents, N_agents*n_x, N_agents*n_x))
+        for i in range(N_agents):
+            P[i, i*n_x:(i+1)*n_x, i*n_x:(i+1)*n_x] = P_ii[i]
 
         A_x_ineq_loc = np.zeros((N_agents, 1, n_x))
         A_u_ineq_loc = np.zeros((N_agents, 1, n_u))
@@ -133,7 +138,7 @@ class LQ_decoupled:
         b_x_ineq_sh = np.zeros((N_agents, 1, 1))
         b_u_ineq_sh = np.zeros((N_agents, 1, 1))
 
-        T_hor = 2
+        T_hor = 1
 
         return N_agents, A, B, Q, R, P, \
         A_x_ineq_loc, b_x_ineq_loc, A_x_ineq_sh, b_x_ineq_sh, \
@@ -145,8 +150,7 @@ class LQ_decoupled:
         self.Q = self.Q_u
         # Obtain linear part of the cost from x_0. Note that the mapping x_0->cost wants x_0 = col_i(x_0^i),
         # while the mapping to the affine part constraints is agent-wise, that is, it only requires x_0^i
-        # This code does a batch multiplication of Q_i with col(x_i)
-        self.q = self.Q_u_x0 @ np.broadcast_to(x_0.reshape(-1, 1), (x_0.shape[0], x_0.shape[0] * x_0.shape[1], 1))
+        self.q = batch_mult_with_coulumn_stack(self.Q_u_x0, x_0)
         self.b_ineq_local_const = self.b_ineq_loc_from_x @ x_0 + self.b_ineq_loc_affine
         self.b_ineq_local_shared = self.b_ineq_shared_from_x @ x_0 + self.b_ineq_shared_affine
         return staticgames.LinearQuadratic(self.Q, self.q, self.A_ineq_local_const, self.b_ineq_local_const, \
@@ -176,11 +180,9 @@ class LQ_decoupled:
         n_input_const = A_u_ineq[0].shape[0]
         n_u = B.shape[2]
         n_x = A.shape[2]
-
         A_ineq_all_timesteps = np.zeros((self.N_agents, T_hor * (n_state_const + n_input_const), T_hor * n_u))
         b_ineq_all_timesteps_from_x = np.zeros((self.N_agents, T_hor * (n_state_const + n_input_const), n_x))  # maps x_0 to b_ineq
         b_ineq_all_timesteps = np.zeros((self.N_agents, T_hor * (n_state_const + n_input_const), 1))
-
         for i in range(self.N_agents):
             # state and input constraints are:
             # kron(I_T, A_x)(S_i u_i +  T_i x0_i) <= kron(1_T, b_x)
@@ -190,7 +192,6 @@ class LQ_decoupled:
             A_ineq_all_timesteps[i, T_hor * n_state_const :, :] = np.kron(np.eye(T_hor), A_u_ineq[i])
             b_ineq_all_timesteps_from_x[i, 0:T_hor * n_state_const, :] = np.kron(np.eye(T_hor), A_x_ineq[i])@T_i
             b_ineq_all_timesteps[i, :, :] = np.row_stack((np.kron(np.ones((T_hor,1)), b_x_ineq[i]), np.kron(np.ones((T_hor,1)), b_u_ineq[i])))
-
         return A_ineq_all_timesteps, b_ineq_all_timesteps_from_x, b_ineq_all_timesteps
 
     def get_predicted_input_trajectory_from_opt_var(self, u_all):

@@ -2,28 +2,37 @@ import numpy as np
 import networkx as nx
 # import torch
 import pickle
+from games.staticgames import batch_mult_with_coulumn_stack
 
 import numpy.linalg.linalg
 
 from games.dyngames import LQ_decoupled
 from algorithms.GNE_centralized import pFB_algorithm
+import matplotlib.pyplot as plt
+from scipy.linalg import block_diag
 
+## This script creates a "game" with two unconstrained decoupled double integrators with terminal cost given by the solution
+## of the DARE. The trajectory is compared with the one resulting by the LQR.
 
 if __name__ == '__main__':
 
     N_it_per_residual_computation = 10
-
     # parameters
     N_iter = 10000
     T_sim = 20
     eps = 10**(-5) # convergence threshold
+    test_threshold = eps *10
     ##########################################
     #             Game inizialization        #
     ##########################################
     dyn_game = LQ_decoupled(None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, test=True)
     x_0 = np.random.random_sample(size=(dyn_game.N_agents, dyn_game.n_x, 1))
     x_0_LQR = x_0
-    K = - numpy.linalg.inv(dyn_game.R) @ np.transpose(dyn_game.B, axes=(0,2,1)) @  dyn_game.P
+    # Define stacked LQR
+    K = np.stack([-numpy.linalg.inv(dyn_game.R[i, i*dyn_game.n_u:(i+1)*dyn_game.n_u, i*dyn_game.n_u:(i+1)*dyn_game.n_u]+ \
+            dyn_game.B[i].T @ dyn_game.P[i, i*dyn_game.n_x:(i+1)*dyn_game.n_x, i*dyn_game.n_x:(i+1)*dyn_game.n_x] @ dyn_game.B[i] ) @ \
+            dyn_game.B[i].T @  dyn_game.P[i, i*dyn_game.n_x:(i+1)*dyn_game.n_x, :] @ block_diag(*[dyn_game.A[j] for j in range(dyn_game.N_agents)]) \
+                  for i in range(dyn_game.N_agents) ]  )
     ##########################################
     #   Variables storage inizialization     #
     ##########################################
@@ -52,13 +61,18 @@ if __name__ == '__main__':
         u_0 = dyn_game.get_first_input_from_opt_var(u_all)
         u_store[:, :, t] = u_0.squeeze(2)
         # Evolve state
-        x_0 = dyn_game.A @ x_0 + dyn_game.B @ u_0
         x_store[:, :, t] = x_0.squeeze(2)
-        x_0_LQR = (dyn_game.A + K @ dyn_game.B) @ x_0_LQR
+        x_0 = dyn_game.A @ x_0 + dyn_game.B @ u_0
+        # This code does a batch multiplication of Q_i with col(x_i)
         x_0_LQR_store[:, :, t] = x_0_LQR.squeeze(2)
-        print("Timestep " + str(t) + " of " + str(T_sim))
+        x_0_LQR = dyn_game.A @ x_0_LQR + dyn_game.B @ batch_mult_with_coulumn_stack(K, x_0_LQR)
+        # print("Timestep " + str(t) + " of " + str(T_sim))
 
-
+    for i in range(x_store.shape[0]):
+        plt.plot(x_store[i,:,:].T, color='blue')
+    for i in range(x_0_LQR_store.shape[0]):
+        plt.plot(x_0_LQR_store[i, :, :].T, color='red')
+    plt.show(block='False')
     if np.linalg.norm(x_store - x_0_LQR_store) < eps:
         print("Dynamic game test PASSED")
     else:

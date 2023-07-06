@@ -1,1 +1,4 @@
-INFO:root:WARNING: test game will be used.
+INFO:root:Random seed set to  1
+INFO:root:Initializing game for test 0 out of 1
+INFO:root:Saving results...
+INFO:root:Saved, job done
