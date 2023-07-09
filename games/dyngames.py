@@ -203,6 +203,31 @@ class LQ_decoupled:
         u_0 = np.expand_dims(u[:,0,:], 2)
         return u_0
 
+    def solve_inf_hor_problem(self, A, B, Q, R):
+        # Iterate DARE and hope
+        n_u = B.shape[2]
+        n_x = A.shape[2]
+        N = A.shape[0]
+        R_i_i = np.stack([R[i][i*n_u:(i+1)*n_u, i*n_u:(i+1)*n_u] for i in range(N)])
+
+        R_i_not_i = np.zeros((N, n_x, N * n_x))
+        
+        for i, j in zip(range(N), range(N)):
+            if j != i:
+                R_i_not_i[i, j] = R[i, :, j * n_u:(j + 1):n_u, k * n_u:(k + 1):n_u]
+
+        R_not_i_not_i = np.zeros((N,N*n_x, N*n_x))
+        for i,j,k in zip(range(N),range(N), range(N)):
+            if j != i and k!=i:
+                R_not_i_not_i[i, j, k] = R[i, j*n_u:(j+1):n_u, k*n_u:(k+1):n_u]
+
+        K = np.stack([-np.linalg.inv(R[i, i * n_u:(i + 1) * n_u, i * n_u:(i + 1) * n_u] + \
+            B[i].T @ P[i, i * n_x:(i + 1) * n_x, i * n_x:(i + 1) * n_x] @ B[i]) @ \
+            B[i].T @ P[i, i * n_x:(i + 1) * n_x, :] @ A_all + \
+            R[i, i * n_u:(i + 1) * n_u, :] +
+                      for i in range(N)])
+        return P, K
+
     @staticmethod
     def generate_random_game(N_agents, n_states, n_inputs):
         A = np.zeros((N_agents, n_states, n_states))
