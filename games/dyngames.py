@@ -1,6 +1,8 @@
+import warnings
+
 import numpy as np
 import scipy.linalg
-from scipy.linalg import block_diag
+from scipy.linalg import block_diag, norm
 from . import staticgames
 from .staticgames import batch_mult_with_coulumn_stack
 import control
@@ -98,15 +100,20 @@ class LQ_decoupled:
         self.R = R
         self.P = P
         n_opt_var = self.n_u*T_hor
+        # Prediction models : *_all is a diagonal matrix of pred. mod. for all agents, *_single is the N stacked pred. mod. of all agents
+        self.S_all, self.T_all = get_multiagent_prediction_model(A, B, T_hor)
+        self.S_single, self.T_single = (np.stack([ get_multiagent_prediction_model(A[i], B[i], T_hor)[0] for i in range(N_agents) ]), \
+                                        np.stack([get_multiagent_prediction_model(A[i], B[i], T_hor)[1] for i in range(N_agents)]))
         # J_i = \|u\|^2_Q_u^i + u' Q_u_x0^i x_0
         self.Q_u,self.Q_u_x0 = self.define_cost_functions(A, B, Q, R, P, T_hor)
         # Unconstrained formulation
         self.A_ineq_local_const, self.b_ineq_loc_from_x, self.b_ineq_loc_affine = \
-            self.generate_state_input_constr(A, B, A_x_ineq_loc, b_x_ineq_loc, A_u_ineq_loc, b_u_ineq_loc, T_hor)
+            self.generate_state_input_constr(A_x_ineq_loc, b_x_ineq_loc, A_u_ineq_loc, b_u_ineq_loc)
         self.A_ineq_shared_const, self.b_ineq_shared_from_x, self.b_ineq_shared_affine = \
-            self.generate_state_input_constr(A, B, A_x_ineq_sh, b_x_ineq_sh, A_u_ineq_sh, b_u_ineq_sh, T_hor)
+            self.generate_state_input_constr(A_x_ineq_sh, b_x_ineq_sh, A_u_ineq_sh, b_u_ineq_sh)
         self.A_eq_loc = np.zeros((N_agents, 1, n_opt_var))
-        self.b_eq_loc = np.zeros((N_agents, 1, 1))
+        self.b_eq_loc_from_x = np.zeros((N_agents, 1, self.n_x))
+        self.b_eq_loc_affine = np.zeros((N_agents, 1, 1))
 
     def setToTestGameSetup(self):
         # two decoupled double integrators with no cost coupling (MPC) and no constraints
@@ -120,6 +127,10 @@ class LQ_decoupled:
         pattern = np.zeros((N_agents, N_agents, N_agents))
         for i in range(N_agents):
             pattern[i,i,i] = 1
+        # pattern[0, 0, 1] = .1 #REMOVE!
+        # pattern[1, 1, 0] = .1 #REMOVE!
+        # pattern[0, 1, 0] = .1 #REMOVE!
+        # pattern[1, 0, 1] = .1 #REMOVE!
 
         Q = np.kron(pattern, np.eye(n_x))
         R = np.kron(pattern, np.eye(n_u))
@@ -137,7 +148,6 @@ class LQ_decoupled:
         A_u_ineq_sh = np.zeros((N_agents, 1, n_u))
         b_x_ineq_sh = np.zeros((N_agents, 1, 1))
         b_u_ineq_sh = np.zeros((N_agents, 1, 1))
-
         T_hor = 1
 
         return N_agents, A, B, Q, R, P, \
@@ -153,6 +163,7 @@ class LQ_decoupled:
         self.q = batch_mult_with_coulumn_stack(self.Q_u_x0, x_0)
         self.b_ineq_local_const = self.b_ineq_loc_from_x @ x_0 + self.b_ineq_loc_affine
         self.b_ineq_local_shared = self.b_ineq_shared_from_x @ x_0 + self.b_ineq_shared_affine
+        self.b_eq_loc = self.b_eq_loc_from_x @ x_0 + self.b_eq_loc_affine
         return staticgames.LinearQuadratic(self.Q, self.q, self.A_ineq_local_const, self.b_ineq_local_const, \
                                            self.A_eq_loc, self.b_eq_loc, \
                                            self.A_ineq_shared_const, self.b_ineq_local_shared)
@@ -166,7 +177,8 @@ class LQ_decoupled:
         n_u = B.shape[2]
         Q_u = np.zeros((N_agents, n_u * N_agents * T_hor, n_u * N_agents * T_hor))
         Q_u_x0 = np.zeros((N_agents, n_u* N_agents *T_hor, n_x* N_agents))
-        S, T = get_multiagent_prediction_model(A,B, T_hor)
+        S = self.S_all
+        T = self.T_all
         for i in range(N_agents):
             Q_all_t = expand_block_square_matrix_to_horizon(Q[i], N_agents, n_x, T_hor, P=P[i])
             R_all_t = expand_block_square_matrix_to_horizon(R[i], N_agents, n_u, T_hor)
@@ -174,8 +186,11 @@ class LQ_decoupled:
             Q_u_x0[i,:,:] = S.T @ Q_all_t @ T
         return Q_u, Q_u_x0
 
-    def generate_state_input_constr(self, A, B, A_x_ineq, b_x_ineq, A_u_ineq, b_u_ineq, T_hor):
+    def generate_state_input_constr(self, A_x_ineq, b_x_ineq, A_u_ineq, b_u_ineq):
         N = self.N_agents
+        A = self.A
+        B = self.B
+        T_hor = self.T_hor
         n_state_const = A_x_ineq[0].shape[0]
         n_input_const = A_u_ineq[0].shape[0]
         n_u = B.shape[2]
@@ -187,12 +202,33 @@ class LQ_decoupled:
             # state and input constraints are:
             # kron(I_T, A_x)(S_i u_i +  T_i x0_i) <= kron(1_T, b_x)
             # kron(I_T, A_u)u_i <= kron(1_T, b_u)
-            S_i, T_i = get_multiagent_prediction_model(A[i], B[i], T_hor)
+            S_i = self.S_single[i]
+            T_i = self.T_single[i]
             A_ineq_all_timesteps[i, 0:T_hor * n_state_const, :] = np.kron(np.eye(T_hor), A_x_ineq[i])@S_i
             A_ineq_all_timesteps[i, T_hor * n_state_const :, :] = np.kron(np.eye(T_hor), A_u_ineq[i])
-            b_ineq_all_timesteps_from_x[i, 0:T_hor * n_state_const, :] = np.kron(np.eye(T_hor), A_x_ineq[i])@T_i
+            b_ineq_all_timesteps_from_x[i, 0:T_hor * n_state_const, :] = -np.kron(np.eye(T_hor), A_x_ineq[i])@T_i
             b_ineq_all_timesteps[i, :, :] = np.row_stack((np.kron(np.ones((T_hor,1)), b_x_ineq[i]), np.kron(np.ones((T_hor,1)), b_u_ineq[i])))
         return A_ineq_all_timesteps, b_ineq_all_timesteps_from_x, b_ineq_all_timesteps
+
+    def generate_state_equality_constr(self, A_x, b_x, t):
+        # set A * x_t = b_x
+        # by rewriting it as A * S * u = b_x - A * T * x_0
+        n_constr = A_x.shape[1]
+        N = self.N_agents
+        T_hor = self.T_hor
+        n_u = self.n_u
+        n_x = self.n_x
+        A_eq = np.zeros((N, n_constr, T_hor * n_u))
+        b_eq_from_x = np.zeros((self.N_agents, n_constr, n_x))  # maps x_0 to b_eq
+        b_eq_affine = np.zeros((self.N_agents, n_constr, 1))
+        S = self.S_single
+        T = self.T_single
+        A_eq[:] = A_x @ S[:, (t-1)*n_x:(t)*n_x,:]
+        b_eq_from_x[:] = -A_x @ T[:, (t-1)*n_x:t*n_x,:] #minus because this goes on the "other side" of the equality
+        b_eq_affine[:] = b_x
+        return A_eq, b_eq_from_x, b_eq_affine
+
+
 
     def get_predicted_input_trajectory_from_opt_var(self, u_all):
         u = u_all.reshape((self.N_agents, self.T_hor, self.n_u))
@@ -203,30 +239,101 @@ class LQ_decoupled:
         u_0 = np.expand_dims(u[:,0,:], 2)
         return u_0
 
-    def solve_inf_hor_problem(self, A, B, Q, R):
+    def solve_inf_hor_problem(self, n_iter = 1000, eps_error = 10**(-4)):
         # Iterate DARE and hope
+        A = self.A
+        B = self.B
+        Q = self.Q
+        R = self.R
         n_u = B.shape[2]
         n_x = A.shape[2]
         N = A.shape[0]
-        R_i_i = np.stack([R[i][i*n_u:(i+1)*n_u, i*n_u:(i+1)*n_u] for i in range(N)])
 
-        R_i_not_i = np.zeros((N, n_x, N * n_x))
-        
-        for i, j in zip(range(N), range(N)):
-            if j != i:
-                R_i_not_i[i, j] = R[i, :, j * n_u:(j + 1):n_u, k * n_u:(k + 1):n_u]
+        A_all = block_diag(*[A[i] for i in range(N)])
+        B_all = block_diag(*[B[i] for i in range(N)])
+        B_not_i = np.zeros((N, N*n_x, (N-1)*n_u))
+        R_not_i_not_i = np.zeros((N, (N - 1) * n_u, (N - 1) * n_u))
+        R_i_not_i = np.zeros((N, n_u, (N - 1) * n_u))
+        P = np.zeros((N, N * n_x, N * n_x))
+        K = np.zeros((N, n_u, N * n_x))
+        K_not_i = np.zeros((N, (N - 1) * n_u, N * n_x))
+        K_all = np.zeros((N * n_u, N * n_x))
+        P_err = 0
+        K_err = 0
 
-        R_not_i_not_i = np.zeros((N,N*n_x, N*n_x))
-        for i,j,k in zip(range(N),range(N), range(N)):
-            if j != i and k!=i:
-                R_not_i_not_i[i, j, k] = R[i, j*n_u:(j+1):n_u, k*n_u:(k+1):n_u]
+        not_i_iterator = [[k for k in range(N) if k not in {i}] for i in range(N)]
 
-        K = np.stack([-np.linalg.inv(R[i, i * n_u:(i + 1) * n_u, i * n_u:(i + 1) * n_u] + \
-            B[i].T @ P[i, i * n_x:(i + 1) * n_x, i * n_x:(i + 1) * n_x] @ B[i]) @ \
-            B[i].T @ P[i, i * n_x:(i + 1) * n_x, :] @ A_all + \
-            R[i, i * n_u:(i + 1) * n_u, :] +
-                      for i in range(N)])
+        R_i_i = np.stack([R[i][i * n_u:(i + 1) * n_u, i * n_u:(i + 1) * n_u] for i in range(N)])
+
+        for i in range(N):
+            R_not_i_not_i[i][:, :] = np.vstack(
+                [np.hstack([R[i][j * n_u:(j + 1) * n_u, k * n_u:(k + 1) * n_u] for k in not_i_iterator[i]]) \
+                 for j in not_i_iterator[i]])
+
+        for i in range(N):
+            R_i_not_i[i][:, :] = np.hstack(
+                [R[i, i * n_u:(i + 1) * n_u, j * n_u:(j + 1) * n_u] for j in not_i_iterator[i]])
+
+        # initialize K
+        for i in range(N):
+            P_ii = scipy.linalg.solve_discrete_are(A[i], B[i], Q[i][i*n_x:(i+1)*n_x, i*n_x:(i+1)*n_x], R[i][i*n_u:(i+1)*n_u, i*n_u:(i+1)*n_u])
+            K[i][:, i*n_x:(i+1)*n_x] = - np.linalg.inv(R[i][i*n_u:(i+1)*n_u, i*n_u:(i+1)*n_u] + B[i].T@P_ii@B[i]) @ (B[i].T@P_ii@A[i])
+
+        P_err_all = np.zeros((n_iter//10))
+        P_evol = np.zeros((n_iter//10))
+        for iter in range(n_iter):
+            P_last = np.array((P))
+            for i in range(N):
+                K_not_i[i][:, :] = np.vstack([K[j] for j in not_i_iterator[i]])
+                P_last = np.array((P))
+                B_not_i = np.hstack(( B_all[:, :i*n_u] , B_all[:, (i+1)*n_u:] ))
+                P[i] = scipy.linalg.solve_discrete_are(A_all + B_not_i @ K_not_i[i], B_all[:, i*n_u:(i+1)*n_u], \
+                                    Q[i] + K_not_i[i].T @ R_not_i_not_i[i] @ K_not_i[i], \
+                                    R_i_i[i], s= (R_i_not_i[i] @ K_not_i[i]).T)
+                P_ii = P[i, i * n_x:(i + 1) * n_x, i * n_x:(i + 1) * n_x]
+                K[i] = -np.linalg.inv(R_i_i[i] + B[i].T @ P_ii @ B[i]) @ \
+                       (B[i].T @ (P[i, i * n_x:(i + 1) * n_x, :] @ (A_all  + B_not_i @ K_not_i[i]) )  + \
+                        R_i_not_i[i] @ K_not_i[i])
+                # K[i] = -np.linalg.inv(R_i_i[i] + B_all[:, i*n_u:(i+1)*n_u].T @ P[i] @ B_all[:, i*n_u:(i+1)*n_u]) @ \
+                #        (B_all[:, i*n_u:(i+1)*n_u].T @ (P[i] @ (A_all  + B_not_i @ K_not_i[i]) )  + \
+                #         R_i_not_i[i] @ K_not_i[i] )
+
+            # Test solution
+            if (iter % 10) == 0:
+                for i in range(N):
+                    K_all[i*n_u:(i+1)*n_u, :] = K[i]
+                    K_not_i[i][:, :] = np.vstack([K[j] for j in not_i_iterator[i]])
+                P_err = 0
+                K_err = 0
+                P_err_2=0
+                for i in range(N):
+                    B_not_i = np.hstack((B_all[:, :i * n_u], B_all[:, (i + 1) * n_u:]))
+                    P_ii = P[i, i * n_x:(i + 1) * n_x, i * n_x:(i + 1) * n_x]
+                    P_err = max(P_err, norm(P[i]-(Q[i] + K_all.T@R[i]@K_all + (A_all + B_all @ K_all).T @ P[i] @ (A_all + B_all @ K_all))) )
+                    K_err = max(K_err, norm(K[i] + np.linalg.inv(R_i_i[i] + B[i].T @ P_ii @ B[i]) @ \
+                                            (B[i].T @ (P[i, i * n_x:(i + 1) * n_x, :] @ (A_all + B_not_i @ K_not_i[i])) + \
+                                            R_i_not_i[i] @ K_not_i[i] ) ) )
+                    # P_test = ( Q[i] + K_not_i[i].T @ R_not_i_not_i[i] @ K_not_i[i] + K[i].T @ R_i_i[i] @ K[i] + \
+                    #                        K[i].T @ R_i_not_i[i] @ K_not_i[i] + (K[i].T @ R_i_not_i[i] @ K_not_i[i]).T + \
+                    #                       (A_all + B_not_i[i] @ K_not_i[i] + B_all[:, i*n_u:(i+1)*n_u] @ K[i]).T @ P[i] @ \
+                    #                       (A_all + B_not_i[i] @ K_not_i[i] + B_all[:, i*n_u:(i+1)*n_u] @ K[i]) )
+                    # P_test_err = norm(P[i] - P_test)
+                    #
+                    # K_test_err = K_all.T@ R[i]@K_all - (K[i].T@R_i_i[i]@K[i] + \
+                    #                                      K[i].T@R_i_not_i[i]@K_not_i[i] + K_not_i[i].T@R_i_not_i[i].T@K[i] + \
+                    #                                      K_not_i[i].T@R_not_i_not_i[i]@K_not_i[i])
+                P_err_all[iter//10] = P_err
+                P_evol[iter//10] = norm(P-P_last)
+                if P_err < eps_error and K_err < eps_error:
+                    break
+
+
+        if not (P_err < eps_error and K_err < eps_error):
+            warnings.warn("[solve_inf_hor_problem] Could not find a solution")
         return P, K
+
+    def set_term_cost_to_inf_hor_sol(self):
+        self.P, _ = self.solve_inf_hor_problem()
 
     @staticmethod
     def generate_random_game(N_agents, n_states, n_inputs):
@@ -250,7 +357,7 @@ class LQ_decoupled:
                     n_inputs = n_inputs + 1
             Q[i, i*n_states:(i+1)*n_states, :] = Q_tot[i*n_states:(i+1)*n_states, :]
             Q[i, :, :] = (Q[i, :, :] + Q[i, :, :].T)/2
-            R[i, i * n_states:(i + 1) * n_states, :] = R_tot[i * n_states:(i + 1) * n_states, :]
+            R[i, i * n_inputs:(i + 1) * n_inputs, :] = R_tot[i * n_inputs:(i + 1) * n_inputs, :]
             R[i, :, :] = (R[i, :, :] + R[i, :, :].T) / 2
 
         return A, B, Q, R

@@ -9,7 +9,7 @@ import numpy.linalg.linalg
 from games.dyngames import LQ_decoupled
 from algorithms.GNE_centralized import pFB_algorithm
 import matplotlib.pyplot as plt
-from scipy.linalg import block_diag
+from scipy.linalg import block_diag, norm
 
 ## This script creates a "game" with two unconstrained decoupled double integrators with terminal cost given by the solution
 ## of the DARE. The trajectory is compared with the one resulting by the LQR.
@@ -28,16 +28,20 @@ if __name__ == '__main__':
     dyn_game = LQ_decoupled(None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, test=True)
     x_0 = np.random.random_sample(size=(dyn_game.N_agents, dyn_game.n_x, 1))
     x_0_LQR = x_0
+    x_0_inf_hor = x_0
     # Define stacked LQR
     K = np.stack([-numpy.linalg.inv(dyn_game.R[i, i*dyn_game.n_u:(i+1)*dyn_game.n_u, i*dyn_game.n_u:(i+1)*dyn_game.n_u]+ \
             dyn_game.B[i].T @ dyn_game.P[i, i*dyn_game.n_x:(i+1)*dyn_game.n_x, i*dyn_game.n_x:(i+1)*dyn_game.n_x] @ dyn_game.B[i] ) @ \
             dyn_game.B[i].T @  dyn_game.P[i, i*dyn_game.n_x:(i+1)*dyn_game.n_x, :] @ block_diag(*[dyn_game.A[j] for j in range(dyn_game.N_agents)]) \
                   for i in range(dyn_game.N_agents) ]  )
+
+    P_inf_hor, K_inf_hor = dyn_game.solve_inf_hor_problem()
     ##########################################
     #   Variables storage inizialization     #
     ##########################################
     x_store = np.zeros((dyn_game.N_agents, dyn_game.n_x, T_sim))
     x_0_LQR_store = np.zeros((dyn_game.N_agents, dyn_game.n_x, T_sim))
+    x_0_inf_hor_store = np.zeros((dyn_game.N_agents, dyn_game.n_x, T_sim))
     u_store = np.zeros((dyn_game.N_agents, dyn_game.n_x, T_sim))
     for t in range(T_sim):
         game_t = dyn_game.generate_game_from_initial_state(x_0)
@@ -67,13 +71,19 @@ if __name__ == '__main__':
         x_0_LQR_store[:, :, t] = x_0_LQR.squeeze(2)
         x_0_LQR = dyn_game.A @ x_0_LQR + dyn_game.B @ batch_mult_with_coulumn_stack(K, x_0_LQR)
         # print("Timestep " + str(t) + " of " + str(T_sim))
+        x_0_inf_hor_store[:,:,t] = x_0_inf_hor.squeeze(2)
+        x_0_inf_hor = dyn_game.A @ x_0_inf_hor + dyn_game.B @ batch_mult_with_coulumn_stack(K_inf_hor, x_0_inf_hor)
 
     for i in range(x_store.shape[0]):
         plt.plot(x_store[i,:,:].T, color='blue')
     for i in range(x_0_LQR_store.shape[0]):
         plt.plot(x_0_LQR_store[i, :, :].T, color='red')
+    for i in range(x_0_inf_hor_store.shape[0]):
+        plt.plot(x_0_inf_hor_store[i, :, :].T, color='green')
     plt.show(block='False')
-    if np.linalg.norm(x_store - x_0_LQR_store) < eps:
+    if np.linalg.norm(x_store - x_0_LQR_store) < eps \
+            and np.linalg.norm(x_store - x_0_inf_hor_store)< eps \
+            and norm(P_inf_hor - dyn_game.P) < eps:
         print("Dynamic game test PASSED")
     else:
         print("Dynamic game test FAILED")
