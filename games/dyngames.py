@@ -234,9 +234,21 @@ class LQ_decoupled:
         u = u_all.reshape((self.N_agents, self.T_hor, self.n_u))
         return u
 
-    def get_first_input_from_opt_var(self, u_all):
+    def get_shifted_trajectory_from_opt_var(self, u_all, x_0):
+        u = u_all[:, self.n_u:]
+        x_last = self.get_state_timestep_from_opt_var(u_all, x_0, self.T_hor)
+        u_shift = np.concatenate((u, batch_mult_with_coulumn_stack(self.K, x_last)), axis=1)
+        return u_shift
+
+    def get_state_timestep_from_opt_var(self, u_all, x_0, t):
+        if t<1 or t>self.T_hor:
+            raise ValueError("[get_state_timestep_from_opt_var] t must be >=1 and <= T_hor, where T_hor = " + str(self.T_hor))
+        x = self.S_single[:, (t-1)*self.n_x: t* self.n_x, :] @ u_all + self.T_single[:, (t-1)*self.n_x:t*self.n_x, :] @ x_0
+        return x
+
+    def get_input_timestep_from_opt_var(self, u_all, t):
         u = self.get_predicted_input_trajectory_from_opt_var(u_all)
-        u_0 = np.expand_dims(u[:,0,:], 2)
+        u_0 = np.expand_dims(u[:,t,:], 2)
         return u_0
 
     def solve_inf_hor_problem(self, n_iter = 1000, eps_error = 10**(-4)):
@@ -248,107 +260,115 @@ class LQ_decoupled:
         n_u = B.shape[2]
         n_x = A.shape[2]
         N = A.shape[0]
-
-        A_all = block_diag(*[A[i] for i in range(N)])
-        B_all = block_diag(*[B[i] for i in range(N)])
-        B_not_i = np.zeros((N, N*n_x, (N-1)*n_u))
-        R_not_i_not_i = np.zeros((N, (N - 1) * n_u, (N - 1) * n_u))
-        R_i_not_i = np.zeros((N, n_u, (N - 1) * n_u))
         P = np.zeros((N, N * n_x, N * n_x))
         K = np.zeros((N, n_u, N * n_x))
-        K_not_i = np.zeros((N, (N - 1) * n_u, N * n_x))
-        K_all = np.zeros((N * n_u, N * n_x))
-        P_err = 0
-        K_err = 0
 
-        not_i_iterator = [[k for k in range(N) if k not in {i}] for i in range(N)]
+        if N>1:
+            A_all = block_diag(*[A[i] for i in range(N)])
+            B_all = block_diag(*[B[i] for i in range(N)])
+            B_not_i = np.zeros((N, N*n_x, (N-1)*n_u))
+            R_not_i_not_i = np.zeros((N, (N - 1) * n_u, (N - 1) * n_u))
+            R_i_not_i = np.zeros((N, n_u, (N - 1) * n_u))
+            K_not_i = np.zeros((N, (N - 1) * n_u, N * n_x))
+            K_all = np.zeros((N * n_u, N * n_x))
+            P_err = 0
+            K_err = 0
 
-        R_i_i = np.stack([R[i][i * n_u:(i + 1) * n_u, i * n_u:(i + 1) * n_u] for i in range(N)])
+            not_i_iterator = [[k for k in range(N) if k not in {i}] for i in range(N)]
 
-        for i in range(N):
-            R_not_i_not_i[i][:, :] = np.vstack(
-                [np.hstack([R[i][j * n_u:(j + 1) * n_u, k * n_u:(k + 1) * n_u] for k in not_i_iterator[i]]) \
-                 for j in not_i_iterator[i]])
+            R_i_i = np.stack([R[i][i * n_u:(i + 1) * n_u, i * n_u:(i + 1) * n_u] for i in range(N)])
 
-        for i in range(N):
-            R_i_not_i[i][:, :] = np.hstack(
-                [R[i, i * n_u:(i + 1) * n_u, j * n_u:(j + 1) * n_u] for j in not_i_iterator[i]])
-
-        # initialize K
-        for i in range(N):
-            P_ii = scipy.linalg.solve_discrete_are(A[i], B[i], Q[i][i*n_x:(i+1)*n_x, i*n_x:(i+1)*n_x], R[i][i*n_u:(i+1)*n_u, i*n_u:(i+1)*n_u])
-            K[i][:, i*n_x:(i+1)*n_x] = - np.linalg.inv(R[i][i*n_u:(i+1)*n_u, i*n_u:(i+1)*n_u] + B[i].T@P_ii@B[i]) @ (B[i].T@P_ii@A[i])
-
-        P_err_all = np.zeros((n_iter//10))
-        P_evol = np.zeros((n_iter//10))
-        for iter in range(n_iter):
-            P_last = np.array((P))
             for i in range(N):
-                K_not_i[i][:, :] = np.vstack([K[j] for j in not_i_iterator[i]])
+                R_not_i_not_i[i][:, :] = np.vstack(
+                    [np.hstack([R[i][j * n_u:(j + 1) * n_u, k * n_u:(k + 1) * n_u] for k in not_i_iterator[i]]) \
+                     for j in not_i_iterator[i]])
+
+            for i in range(N):
+                R_i_not_i[i][:, :] = np.hstack(
+                    [R[i, i * n_u:(i + 1) * n_u, j * n_u:(j + 1) * n_u] for j in not_i_iterator[i]])
+
+            # initialize K
+            for i in range(N):
+                P_ii = scipy.linalg.solve_discrete_are(A[i], B[i], Q[i][i*n_x:(i+1)*n_x, i*n_x:(i+1)*n_x], R[i][i*n_u:(i+1)*n_u, i*n_u:(i+1)*n_u])
+                K[i][:, i*n_x:(i+1)*n_x] = - np.linalg.inv(R[i][i*n_u:(i+1)*n_u, i*n_u:(i+1)*n_u] + B[i].T@P_ii@B[i]) @ (B[i].T@P_ii@A[i])
+
+            P_err_all = np.zeros((n_iter//10))
+            P_evol = np.zeros((n_iter//10))
+            for iter in range(n_iter):
                 P_last = np.array((P))
-                B_not_i = np.hstack(( B_all[:, :i*n_u] , B_all[:, (i+1)*n_u:] ))
-                P[i] = scipy.linalg.solve_discrete_are(A_all + B_not_i @ K_not_i[i], B_all[:, i*n_u:(i+1)*n_u], \
-                                    Q[i] + K_not_i[i].T @ R_not_i_not_i[i] @ K_not_i[i], \
-                                    R_i_i[i], s= (R_i_not_i[i] @ K_not_i[i]).T)
-                P_ii = P[i, i * n_x:(i + 1) * n_x, i * n_x:(i + 1) * n_x]
-                K[i] = -np.linalg.inv(R_i_i[i] + B[i].T @ P_ii @ B[i]) @ \
-                       (B[i].T @ (P[i, i * n_x:(i + 1) * n_x, :] @ (A_all  + B_not_i @ K_not_i[i]) )  + \
-                        R_i_not_i[i] @ K_not_i[i])
-                # K[i] = -np.linalg.inv(R_i_i[i] + B_all[:, i*n_u:(i+1)*n_u].T @ P[i] @ B_all[:, i*n_u:(i+1)*n_u]) @ \
-                #        (B_all[:, i*n_u:(i+1)*n_u].T @ (P[i] @ (A_all  + B_not_i @ K_not_i[i]) )  + \
-                #         R_i_not_i[i] @ K_not_i[i] )
-
-            # Test solution
-            if (iter % 10) == 0:
                 for i in range(N):
-                    K_all[i*n_u:(i+1)*n_u, :] = K[i]
                     K_not_i[i][:, :] = np.vstack([K[j] for j in not_i_iterator[i]])
-                P_err = 0
-                K_err = 0
-                P_err_2=0
-                for i in range(N):
-                    B_not_i = np.hstack((B_all[:, :i * n_u], B_all[:, (i + 1) * n_u:]))
+                    P_last = np.array((P))
+                    B_not_i = np.hstack(( B_all[:, :i*n_u] , B_all[:, (i+1)*n_u:] ))
+                    P[i] = scipy.linalg.solve_discrete_are(A_all + B_not_i @ K_not_i[i], B_all[:, i*n_u:(i+1)*n_u], \
+                                        Q[i] + K_not_i[i].T @ R_not_i_not_i[i] @ K_not_i[i], \
+                                        R_i_i[i], s= (R_i_not_i[i] @ K_not_i[i]).T)
                     P_ii = P[i, i * n_x:(i + 1) * n_x, i * n_x:(i + 1) * n_x]
-                    P_err = max(P_err, norm(P[i]-(Q[i] + K_all.T@R[i]@K_all + (A_all + B_all @ K_all).T @ P[i] @ (A_all + B_all @ K_all))) )
-                    K_err = max(K_err, norm(K[i] + np.linalg.inv(R_i_i[i] + B[i].T @ P_ii @ B[i]) @ \
-                                            (B[i].T @ (P[i, i * n_x:(i + 1) * n_x, :] @ (A_all + B_not_i @ K_not_i[i])) + \
-                                            R_i_not_i[i] @ K_not_i[i] ) ) )
-                    # P_test = ( Q[i] + K_not_i[i].T @ R_not_i_not_i[i] @ K_not_i[i] + K[i].T @ R_i_i[i] @ K[i] + \
-                    #                        K[i].T @ R_i_not_i[i] @ K_not_i[i] + (K[i].T @ R_i_not_i[i] @ K_not_i[i]).T + \
-                    #                       (A_all + B_not_i[i] @ K_not_i[i] + B_all[:, i*n_u:(i+1)*n_u] @ K[i]).T @ P[i] @ \
-                    #                       (A_all + B_not_i[i] @ K_not_i[i] + B_all[:, i*n_u:(i+1)*n_u] @ K[i]) )
-                    # P_test_err = norm(P[i] - P_test)
-                    #
-                    # K_test_err = K_all.T@ R[i]@K_all - (K[i].T@R_i_i[i]@K[i] + \
-                    #                                      K[i].T@R_i_not_i[i]@K_not_i[i] + K_not_i[i].T@R_i_not_i[i].T@K[i] + \
-                    #                                      K_not_i[i].T@R_not_i_not_i[i]@K_not_i[i])
-                P_err_all[iter//10] = P_err
-                P_evol[iter//10] = norm(P-P_last)
-                if P_err < eps_error and K_err < eps_error:
-                    break
+                    K[i] = -np.linalg.inv(R_i_i[i] + B[i].T @ P_ii @ B[i]) @ \
+                           (B[i].T @ (P[i, i * n_x:(i + 1) * n_x, :] @ (A_all  + B_not_i @ K_not_i[i]) )  + \
+                            R_i_not_i[i] @ K_not_i[i])
+                    # K[i] = -np.linalg.inv(R_i_i[i] + B_all[:, i*n_u:(i+1)*n_u].T @ P[i] @ B_all[:, i*n_u:(i+1)*n_u]) @ \
+                    #        (B_all[:, i*n_u:(i+1)*n_u].T @ (P[i] @ (A_all  + B_not_i @ K_not_i[i]) )  + \
+                    #         R_i_not_i[i] @ K_not_i[i] )
+
+                # Test solution
+                if (iter % 10) == 0:
+                    for i in range(N):
+                        K_all[i*n_u:(i+1)*n_u, :] = K[i]
+                        K_not_i[i][:, :] = np.vstack([K[j] for j in not_i_iterator[i]])
+                    P_err = 0
+                    K_err = 0
+                    P_err_2=0
+                    for i in range(N):
+                        B_not_i = np.hstack((B_all[:, :i * n_u], B_all[:, (i + 1) * n_u:]))
+                        P_ii = P[i, i * n_x:(i + 1) * n_x, i * n_x:(i + 1) * n_x]
+                        P_err = max(P_err, norm(P[i]-(Q[i] + K_all.T@R[i]@K_all + (A_all + B_all @ K_all).T @ P[i] @ (A_all + B_all @ K_all))) )
+                        K_err = max(K_err, norm(K[i] + np.linalg.inv(R_i_i[i] + B[i].T @ P_ii @ B[i]) @ \
+                                                (B[i].T @ (P[i, i * n_x:(i + 1) * n_x, :] @ (A_all + B_not_i @ K_not_i[i])) + \
+                                                R_i_not_i[i] @ K_not_i[i] ) ) )
+                        # P_test = ( Q[i] + K_not_i[i].T @ R_not_i_not_i[i] @ K_not_i[i] + K[i].T @ R_i_i[i] @ K[i] + \
+                        #                        K[i].T @ R_i_not_i[i] @ K_not_i[i] + (K[i].T @ R_i_not_i[i] @ K_not_i[i]).T + \
+                        #                       (A_all + B_not_i[i] @ K_not_i[i] + B_all[:, i*n_u:(i+1)*n_u] @ K[i]).T @ P[i] @ \
+                        #                       (A_all + B_not_i[i] @ K_not_i[i] + B_all[:, i*n_u:(i+1)*n_u] @ K[i]) )
+                        # P_test_err = norm(P[i] - P_test)
+                        #
+                        # K_test_err = K_all.T@ R[i]@K_all - (K[i].T@R_i_i[i]@K[i] + \
+                        #                                      K[i].T@R_i_not_i[i]@K_not_i[i] + K_not_i[i].T@R_i_not_i[i].T@K[i] + \
+                        #                                      K_not_i[i].T@R_not_i_not_i[i]@K_not_i[i])
+                    P_err_all[iter//10] = P_err
+                    P_evol[iter//10] = norm(P-P_last)
+                    if P_err < eps_error and K_err < eps_error:
+                        break
 
 
-        if not (P_err < eps_error and K_err < eps_error):
-            warnings.warn("[solve_inf_hor_problem] Could not find a solution")
+            if not (P_err < eps_error and K_err < eps_error):
+                warnings.warn("[solve_inf_hor_problem] Could not find a solution")
+        else:
+            # single agent case
+            P[0] = scipy.linalg.solve_discrete_are(A[0], B[0], Q[0], R[0])
+            K[0] = - np.linalg.inv(R[0] + B[0].T @ P[0] @ B[0]) @ (B[0].T @ P[0] @ A[0] )
         return P, K
 
     def set_term_cost_to_inf_hor_sol(self):
-        self.P, _ = self.solve_inf_hor_problem()
+        self.P, self.K = self.solve_inf_hor_problem()
 
     @staticmethod
     def generate_random_game(N_agents, n_states, n_inputs):
         A = np.zeros((N_agents, n_states, n_states))
         B = np.zeros((N_agents, n_states, n_inputs))
-        Q_tot = generate_random_monotone_matrix(N_agents, n_states) #TODO: function that generates block matrices such that Q_ii>=0 and Q>=0
+        Q_tot = generate_random_monotone_matrix(N_agents, n_states)
         R_tot = generate_random_monotone_matrix(N_agents, n_inputs)
         Q = np.zeros((N_agents, N_agents*n_states, N_agents*n_states ))
         R = np.zeros((N_agents, N_agents * n_inputs, N_agents * n_inputs))
         for i in range(N_agents):
             is_controllable = False
             attempt_controllable = 0
-            while not is_controllable and attempt_controllable < 10:
-                A_single_agent = -0.5 + 1 * np.random.random_sample(size=[n_states, n_states])
-                B_single_agent = -0.5 + 1 * np.random.random_sample(size=[n_states, n_inputs])
+            max_norm_eig = 0
+            # limit maximum norm of eigenvalues so that the prediction model does not explode
+            while (not is_controllable and attempt_controllable < 10) or max_norm_eig>1.2:
+                A_single_agent = -1 + 2 * np.random.random_sample(size=[n_states, n_states])
+                B_single_agent = -1 + 2 * np.random.random_sample(size=[n_states, n_inputs])
+                max_norm_eig = max(np.linalg.norm(np.expand_dims(np.linalg.eigvals(A_single_agent), 1), axis = 1))
                 A[i, :, :] = A_single_agent
                 B[i, :, :] = B_single_agent
                 is_controllable = np.linalg.matrix_rank(control.ctrb(A_single_agent, B_single_agent)) == n_states

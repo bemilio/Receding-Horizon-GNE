@@ -6,7 +6,7 @@ import torch
 from qpth.qp import QPFunction, QPSolvers
 import numpy as np
 import osqp
-from scipy.sparse import csr_matrix
+from scipy.sparse import csc_matrix
 from scipy.linalg import block_diag
 
 class BackwardStep():
@@ -17,9 +17,9 @@ class BackwardStep():
         N = Q.shape[0]
         n_x = Q.shape[1]
         self.Q=[]
-        self.Q = csr_matrix(alpha* block_diag(*[Q[i, :, :] for i in range(N)]) + np.eye(N*n_x) )
-        self.A_ineq = csr_matrix( block_diag(*[np.vstack((A_ineq[i, :, :], A_eq[i, :, :])) for i in range(N) ]) )
-        self.lower = np.vstack([np.vstack((-np.inf * np.ones( (b_ineq[i,:].shape[0], 1) ), b_eq[i, :])) for i in range(N) ] )
+        self.Q = csc_matrix(alpha* block_diag(*[Q[i, :, :] for i in range(N)]) + np.eye(N*n_x) )
+        self.A_ineq = csc_matrix( block_diag(*[np.vstack((A_ineq[i, :, :], A_eq[i, :, :])) for i in range(N) ]) )
+        self.lower = np.vstack([np.vstack((-np.inf * np.ones( (b_ineq[i,:].shape[0], 1) ), b_eq[i, :] )) for i in range(N) ] )
         self.upper = np.vstack([np.vstack((b_ineq[i,:], b_eq[i, :])) for i in range(N) ] )
         self.q = q.reshape((-1,1))
         self.alpha = alpha # inertia
@@ -30,8 +30,8 @@ class BackwardStep():
         is_solved = False
         solver = osqp.OSQP()
         solver.setup(P=self.Q, q=q2, A=self.A_ineq, l=self.lower, u=self.upper, verbose=False,
-                warm_start=True, max_iter=100000, eps_abs=10 ** (-8), eps_rel=10 ** (-8), eps_prim_inf=10 ** (-8),
-                eps_dual_inf=10 ** (-8))
+                warm_start=False, max_iter=10000, eps_abs=10 ** (-7), eps_rel=10 ** (-7), eps_prim_inf=10 ** (-7),
+                eps_dual_inf=10 ** (-7))
         results = solver.solve()
         if results.info.status != 'solved':
             print("[BackwardStep]: OSQP did not solve correctly, OSQP status:" + results.info.status)
@@ -39,14 +39,14 @@ class BackwardStep():
             if results.info.status == 'maximum iterations reached' or results.info.status == 'solved inaccurate':
                 # Re-attempt solution by scaling the costs, sometimes this gets OSQP to unstuck
                 i_attempt = 1
-                while i_attempt < 3 and results.info.status != 'solved':
+                while i_attempt < 1 and results.info.status != 'solved':
                     print("[BackwardStep]: Re-trying solution, attempt:" + str(i_attempt))
                     logging.info("[BackwardStep]: Re-trying solution, attempt:" + str(i_attempt))
                     solver = osqp.OSQP()
                     solver.setup(P=(i_attempt+1) * self.Q, q=(i_attempt+1) * q2, A=self.A_ineq, l=self.lower, u=self.upper, verbose=False,
-                            warm_start=True, max_iter=100000, eps_abs=10 ** (-8), eps_rel=10 ** (-8),
-                            eps_prim_inf=10 ** (-8),
-                            eps_dual_inf=10 ** (-8))
+                            warm_start=True, max_iter=10000, eps_abs=10 ** (-6), eps_rel=10 ** (-6),
+                            eps_prim_inf=10 ** (-6),
+                            eps_dual_inf=10 ** (-6))
                     results=solver.solve()
                     i_attempt = i_attempt + 1
             if results.info.status == 'solved':

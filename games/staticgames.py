@@ -83,7 +83,11 @@ class LinearQuadratic:
 
         def get_strMon_Lip_constants(self):
             #TODO
-            raise NotImplementedError("[LinearQuadraticFullInfo::get_strMon_Lip_constants] Not implemented")
+            Q_all = np.vstack([self.Q[i] for i in range(self.Q.shape[0])])
+            mu = min(np.linalg.eigvalsh(Q_all + Q_all.T))/2
+            L = max(np.linalg.eigvalsh(Q_all + Q_all.T))/2
+            return mu, L
+
 
     def setToTestGameSetup(self):
         # Solutions are x_2 = x_1, x_1<=0, x_2<=0

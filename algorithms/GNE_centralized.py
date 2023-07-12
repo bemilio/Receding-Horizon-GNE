@@ -15,7 +15,7 @@ class pFB_algorithm:
             self.x = x_0
         else:
             self.x = np.zeros((N_agents, n, 1))
-        if dual_0:
+        if dual_0 is not None:
             self.dual = dual_0
         else:
             self.dual = np.zeros((m, 1))
@@ -51,20 +51,10 @@ class pFB_algorithm:
         return residual
 
     def set_stepsize_using_Lip_const(self, safety_margin=.5):
-        # TODO
-        raise NotImplementedError("[pFB_algorithm::set_stepsize_using_Lip_const] ")
-        # N = self.x.size(0)
-        # mu_pseudog, Lip_pseudog = self.game.F.get_strMon_Lip_constants()
-        # max_neigh = max([torch.abs(self.game.K.L[i, i, 0, 0]).item() for i in range(N)]) # The diagonal of the Laplacian matrix contains the node degree
-        # max_A = torch.max(np.sum(torch.abs(self.game.A_ineq_shared),axis=2)).item()
-        # L_G = max(Lip_pseudog, 2*max_neigh)
-        # r_x = max_A
-        # r_lambda = max_A + 2* max_neigh
-        # r_nu = 2* max_neigh
-        # delta = 1.1*max( 2*r_x, 2*r_lambda, 2*r_nu ) # The 1.1 is only to make delta strictly greater than the r.h.s
-        # self.primal_stepsize =  safety_margin * (2*delta - r_x)**(-1) + (1-safety_margin)*(r_x + delta)**(-1)
-        # self.dual_stepsize = safety_margin * (2*delta - r_lambda)**(-1) + (1-safety_margin)*(r_lambda + delta)**(-1)
-        # self.consensus_stepsize = safety_margin * (2*delta - r_nu)**(-1) + (1-safety_margin)*( r_nu + delta)**(-1)
+        # Converges if stepsize < 2 mu, where mu is the str. mon. of pseudograd
+        mu, L = self.game.F.get_strMon_Lip_constants()
+        self.primal_stepsize = safety_margin * 2 * mu/(L*L)
+        self.dual_stepsize = safety_margin * 2 * mu/(L*L)
 
 
 class FBF_algorithm:

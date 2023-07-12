@@ -42,7 +42,7 @@ if __name__ == '__main__':
     x_store = np.zeros((dyn_game.N_agents, dyn_game.n_x, T_sim))
     x_0_LQR_store = np.zeros((dyn_game.N_agents, dyn_game.n_x, T_sim))
     x_0_inf_hor_store = np.zeros((dyn_game.N_agents, dyn_game.n_x, T_sim))
-    u_store = np.zeros((dyn_game.N_agents, dyn_game.n_x, T_sim))
+    u_store = np.zeros((dyn_game.N_agents, dyn_game.n_u, T_sim))
     for t in range(T_sim):
         game_t = dyn_game.generate_game_from_initial_state(x_0)
         #######################################
