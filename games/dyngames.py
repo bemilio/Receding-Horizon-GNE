@@ -105,7 +105,7 @@ class LQ_decoupled:
         self.S_single, self.T_single = (np.stack([ get_multiagent_prediction_model(A[i], B[i], T_hor)[0] for i in range(N_agents) ]), \
                                         np.stack([get_multiagent_prediction_model(A[i], B[i], T_hor)[1] for i in range(N_agents)]))
         # J_i = \|u\|^2_Q_u^i + u' Q_u_x0^i x_0
-        self.Q_u,self.Q_u_x0 = self.define_cost_functions(A, B, Q, R, P, T_hor)
+        self.Q_u,self.Q_u_x0 = self.define_cost_functions()
         # Unconstrained formulation
         self.A_ineq_local_const, self.b_ineq_loc_from_x, self.b_ineq_loc_affine = \
             self.generate_state_input_constr(A_x_ineq_loc, b_x_ineq_loc, A_u_ineq_loc, b_u_ineq_loc)
@@ -155,7 +155,6 @@ class LQ_decoupled:
         A_u_ineq_loc, b_u_ineq_loc, A_u_ineq_sh, b_u_ineq_sh, \
         T_hor
 
-
     def generate_game_from_initial_state(self, x_0):
         self.Q = self.Q_u
         # Obtain linear part of the cost from x_0. Note that the mapping x_0->cost wants x_0 = col_i(x_0^i),
@@ -168,10 +167,16 @@ class LQ_decoupled:
                                            self.A_eq_loc, self.b_eq_loc, \
                                            self.A_ineq_shared_const, self.b_ineq_local_shared)
 
-    def define_cost_functions(self, A, B, Q, R, P, T_hor):
+    def define_cost_functions(self):
         # J_i = .5 \|u\|^2_{T'Q^i_all_t T} + u'S'Q^i_all_t Tx_0
         # where Q^i_all_t is block diagonal with kron(I_T, Q_i) and P_i
         # Returns Q_u[i]=T'Q^i_all_t T, Q_u_x0[i]=S'Q^i_all_t T.
+        A = self.A
+        B = self.B
+        Q = self.Q
+        R = self.R
+        P = self.P
+        T_hor = self.T_hor
         N_agents = self.N_agents
         n_x = A.shape[2]
         n_u = B.shape[2]
@@ -237,6 +242,7 @@ class LQ_decoupled:
     def get_shifted_trajectory_from_opt_var(self, u_all, x_0):
         u = u_all[:, self.n_u:]
         x_last = self.get_state_timestep_from_opt_var(u_all, x_0, self.T_hor)
+        # warnings.warn("[get_shifted_trajectory_from_opt_var] For testing, the shifted sequence is being altered")
         u_shift = np.concatenate((u, batch_mult_with_coulumn_stack(self.K, x_last)), axis=1)
         return u_shift
 
@@ -251,7 +257,7 @@ class LQ_decoupled:
         u_0 = np.expand_dims(u[:,t,:], 2)
         return u_0
 
-    def solve_inf_hor_problem(self, n_iter = 1000, eps_error = 10**(-4)):
+    def solve_inf_hor_problem(self, n_iter = 1000, eps_error = 10**(-6)):
         # Iterate DARE and hope
         A = self.A
         B = self.B
@@ -318,7 +324,6 @@ class LQ_decoupled:
                         K_not_i[i][:, :] = np.vstack([K[j] for j in not_i_iterator[i]])
                     P_err = 0
                     K_err = 0
-                    P_err_2=0
                     for i in range(N):
                         B_not_i = np.hstack((B_all[:, :i * n_u], B_all[:, (i + 1) * n_u:]))
                         P_ii = P[i, i * n_x:(i + 1) * n_x, i * n_x:(i + 1) * n_x]
@@ -339,10 +344,8 @@ class LQ_decoupled:
                     P_evol[iter//10] = norm(P-P_last)
                     if P_err < eps_error and K_err < eps_error:
                         break
-
-
             if not (P_err < eps_error and K_err < eps_error):
-                warnings.warn("[solve_inf_hor_problem] Could not find a solution")
+                raise RuntimeError("[solve_inf_hor_problem] Could not find a solution")
         else:
             # single agent case
             P[0] = scipy.linalg.solve_discrete_are(A[0], B[0], Q[0], R[0])
@@ -351,6 +354,8 @@ class LQ_decoupled:
 
     def set_term_cost_to_inf_hor_sol(self):
         self.P, self.K = self.solve_inf_hor_problem()
+        # Re-create cost functions with the new terminal cost
+        self.Q_u, self.Q_u_x0 = self.define_cost_functions()
 
     @staticmethod
     def generate_random_game(N_agents, n_states, n_inputs):

@@ -30,8 +30,8 @@ class BackwardStep():
         is_solved = False
         solver = osqp.OSQP()
         solver.setup(P=self.Q, q=q2, A=self.A_ineq, l=self.lower, u=self.upper, verbose=False,
-                warm_start=False, max_iter=10000, eps_abs=10 ** (-7), eps_rel=10 ** (-7), eps_prim_inf=10 ** (-7),
-                eps_dual_inf=10 ** (-7))
+                warm_start=False, max_iter=10000, eps_abs=10 ** (-8), eps_rel=10 ** (-8), eps_prim_inf=10 ** (-8),
+                eps_dual_inf=10 ** (-8))
         results = solver.solve()
         if results.info.status != 'solved':
             print("[BackwardStep]: OSQP did not solve correctly, OSQP status:" + results.info.status)

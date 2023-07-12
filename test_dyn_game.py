@@ -62,7 +62,7 @@ if __name__ == '__main__':
             alg.run_once()
         # Convert optimization variable into state and input
         u_all, d, r, c = alg.get_state()
-        u_0 = dyn_game.get_first_input_from_opt_var(u_all)
+        u_0 = dyn_game.get_input_timestep_from_opt_var(u_all,0)
         u_store[:, :, t] = u_0.squeeze(2)
         # Evolve state
         x_store[:, :, t] = x_0.squeeze(2)
