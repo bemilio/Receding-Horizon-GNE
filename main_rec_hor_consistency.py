@@ -82,7 +82,7 @@ if __name__ == '__main__':
                 dyn_game.set_term_cost_to_inf_hor_sol()
                 x_0 = np.ones((N_agents, n_x, 1))
                 x_last = np.zeros((N_agents, n_x, 1)) #stores last state of the sequence
-                _, K = dyn_game.solve_inf_hor_problem()
+                _, K = dyn_game.solve_closed_loop_inf_hor_problem()
                 K_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)] [test, :] = K
                 A_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)] [test, :] = A
                 B_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)] [test, :] = B

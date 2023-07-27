@@ -35,7 +35,7 @@ if __name__ == '__main__':
             dyn_game.B[i].T @  dyn_game.P[i, i*dyn_game.n_x:(i+1)*dyn_game.n_x, :] @ block_diag(*[dyn_game.A[j] for j in range(dyn_game.N_agents)]) \
                   for i in range(dyn_game.N_agents) ]  )
 
-    P_inf_hor, K_inf_hor = dyn_game.solve_inf_hor_problem()
+    P_inf_hor, K_inf_hor = dyn_game.solve_closed_loop_inf_hor_problem()
     ##########################################
     #   Variables storage inizialization     #
     ##########################################
