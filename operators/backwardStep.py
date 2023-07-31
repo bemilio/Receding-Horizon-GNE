@@ -3,7 +3,6 @@ import warnings
 
 import scipy.linalg
 import torch
-from qpth.qp import QPFunction, QPSolvers
 import numpy as np
 import osqp
 from scipy.sparse import csc_matrix

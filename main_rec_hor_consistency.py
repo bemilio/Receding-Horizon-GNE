@@ -4,7 +4,7 @@ import numpy as np
 import networkx as nx
 # import torch
 import pickle
-from games.dyngames import LQ_decoupled
+import games.dyngames as dyngames
 from algorithms.GNE_centralized import pFB_algorithm
 import matplotlib.pyplot as plt
 import time
@@ -41,14 +41,14 @@ if __name__ == '__main__':
     ##########################################
     #   Variables storage inizialization     #
     ##########################################
-    x_store = [ [ np.zeros((N_random_tests, N_agents, n_x, T_sim)) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
+    x_store = [ [ np.zeros((N_random_tests, n_x, T_sim)) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
     u_store = [ [ np.zeros((N_random_tests, N_agents, n_u, T_sim)) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
     u_pred_traj_store = [ [ np.zeros((N_random_tests, N_agents, T_hor * n_u, T_sim)) for N_agents in N_agents_to_test ] for T_hor in T_hor_to_test ]
-    x_pred_traj_store = [ [ np.zeros((N_random_tests, N_agents, T_hor * n_x, T_sim)) for N_agents in N_agents_to_test ] for T_hor in T_hor_to_test ]
+    x_pred_traj_store = [ [ np.zeros((N_random_tests, T_hor * n_x, T_sim)) for N_agents in N_agents_to_test ] for T_hor in T_hor_to_test ]
     u_shifted_traj_store = [ [ np.zeros((N_random_tests, N_agents, T_hor * n_u, T_sim)) for N_agents in N_agents_to_test ] for T_hor in T_hor_to_test ]
     residual_store = [ [np.zeros((N_random_tests, (N_iter // N_it_per_residual_computation), T_sim)) for _ in N_agents_to_test ] for _ in T_hor_to_test ]
     K_store = [ [ np.zeros((N_random_tests, N_agents, n_u, N_agents * n_x)) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
-    A_store = [ [ np.zeros((N_random_tests, N_agents, n_x, n_x)) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
+    A_store = [ [ np.zeros((N_random_tests, n_x, n_x)) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
     B_store = [ [ np.zeros((N_random_tests, N_agents, n_x, n_u)) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
 
     test_counter = 0
@@ -58,15 +58,13 @@ if __name__ == '__main__':
             ##########################################
             #        Test case creation              #
             #########################################
-            A, B, Q, R = LQ_decoupled.generate_random_game(N_agents, n_x, n_u)
-            A_x_ineq_loc = np.stack([np.vstack((np.eye(n_x), -np.eye(n_x))) for _ in range(N_agents)], axis=0)
-            A_u_ineq_loc = np.stack([np.vstack((np.eye(n_u), -np.eye(n_u))) for _ in range(N_agents)], axis=0)
-            b_x_ineq_loc = 100 * np.ones((N_agents, 2 * n_x, 1))
-            b_u_ineq_loc = 100 * np.ones((N_agents, 2 * n_u, 1))
-            A_x_ineq_sh = np.zeros((N_agents, 1, n_x))
-            A_u_ineq_sh = np.zeros((N_agents, 1, n_u))
-            b_x_ineq_sh = np.zeros((N_agents, 1, 1))
-            b_u_ineq_sh = np.zeros((N_agents, 1, 1))
+            A, B, Q, R = dyngames.LQ.generate_random_game(N_agents, n_x, n_u)
+            C_x = np.stack([np.vstack((np.eye(n_x), -np.eye(n_x))) for _ in range(N_agents)], axis=0)
+            C_u_loc = np.stack([np.vstack((np.eye(n_u), -np.eye(n_u))) for _ in range(N_agents)], axis=0)
+            d_x = 100 * np.ones((N_agents, 2 * n_x, 1))
+            d_u_loc = 100 * np.ones((N_agents, 2 * n_u, 1))
+            C_u_sh = np.zeros((N_agents, 1, n_u))
+            d_u_sh = np.zeros((N_agents, 1, 1))
             P = Q
             for T_hor in T_hor_to_test:
                 test_counter = test_counter + 1
@@ -75,10 +73,7 @@ if __name__ == '__main__':
                 ##########################################
                 # print("Initializing game for test " + str(test) + " out of " +str(N_random_tests))
                 # logging.info("Initializing game for test " + str(test) + " out of " +str(N_random_tests))
-                dyn_game = LQ_decoupled(N_agents, A, B, Q, R, P,
-                                 A_x_ineq_loc, b_x_ineq_loc, A_x_ineq_sh, b_x_ineq_sh,
-                                 A_u_ineq_loc, b_u_ineq_loc, A_u_ineq_sh, b_u_ineq_sh,
-                                 T_hor)
+                dyn_game = dyngames.LQ(N_agents, A, B, Q, R, P, C_x, d_x, C_u_loc, d_u_loc, C_u_sh, d_u_sh, T_hor)
                 dyn_game.set_term_cost_to_inf_hor_sol()
                 x_0 = np.ones((N_agents, n_x, 1))
                 x_last = np.zeros((N_agents, n_x, 1)) #stores last state of the sequence
