@@ -31,7 +31,7 @@ def get_multiagent_prediction_model(A, B, T_hor):
     return S_i, T
 
 
-def generate_random_monotone_matrix(N, n_x):
+def generate_random_monotone_matrix(N, n_x, str_mon=1):
     # Produce a random square block matrix Q of dimension N*n_x where each block is n_x*n_x. The blocks on the diagonal are
     # symmetric positive definite and Q is positive definite, not symmetric.
     Q = np.random.random_sample(size=[N * n_x, N * n_x])
@@ -43,7 +43,7 @@ def generate_random_monotone_matrix(N, n_x):
             Q[i * n_x:(i + 1) * n_x, i * n_x:(i + 1) * n_x] = Q_i - min_eig * np.eye(n_x)
     min_eig = min(np.linalg.eigvalsh((Q + Q.T) / 2))
     if min_eig.item() < 0:
-        Q = Q - min_eig * np.eye(N * n_x)
+        Q = Q  + (str_mon - min_eig) * np.eye(N * n_x)
     eps = 10 ** (-10)
     # Check just to be sure
     if min(np.linalg.eigvalsh((Q + Q.T) / 2)) < -1 * eps:
@@ -222,7 +222,7 @@ class LQ:
             d[i, :, :] = np.kron(np.ones((self.T_hor, 1)), b) / self.N_agents
         return C, D, d
 
-    def generate_state_equality_constr(self, A, b, t):
+    def generate_state_equality_constr(self, A, b, t): #TODO: This should become a SHARED equality constraint
         '''
         :param A: 2D-numpy array
         :param b: 2D-numpy array (column vectors) such that the constraints are Ax(t)=b
@@ -239,8 +239,8 @@ class LQ:
         d = np.zeros((self.N_agents, n_constr, 1))
         for i in range(self.N_agents):
             C[i, :, :] = A[i] @ self.S[i][t * self.n_x:(t + 1) * self.n_x, :]
-            D[i, :, :] = -A[i] @ self.T[i][t * self.n_x:(t + 1) * self.n_x, :]
-            d[i, :, :] = b[i]
+            D[i, :, :] = -A[i] @ self.T[i][t * self.n_x:(t + 1) * self.n_x, :]/self.N_agents
+            d[i, :, :] = b[i]/self.N_agents
         self.C_eq = C
         self.D_eq = D
         self.d_eq = d
@@ -305,7 +305,10 @@ class LQ:
         for k in range(n_iter):
             A_cl = A + np.sum(B @ K, axis=0)
             for i in range(N):
-                P[i][:, :] = control.dlyap(A.T, A_cl.T, Q[i])  # -A.T @ X A_cl + X - Q[i] = 0
+                try:
+                    P[i][:, :] = control.dlyap(A.T, A_cl.T, Q[i])  # -A.T @ X A_cl + X - Q[i] = 0
+                except:
+                    print("[solve_open_loop_inf_hor_problem] An error occurred while solving the Lyapunov equation")
             M = np.linalg.inv(np.eye(n_x) + np.sum(B @ np.linalg.inv(R) @ B.T3D() @ P, axis=0))
             K = - np.linalg.inv(R) @ B.T3D() @ P @ M @ A  # Batch multiplication
             if n_iter%10==0:
@@ -365,7 +368,10 @@ class LQ:
                 '''
                 for i in range(N):
                     Q_bar = Q[i] + (B[i].T @ P[i] @ A_cl).T @ np.linalg.inv(R[i]) @ (B[i].T @ P[i] @ A_cl)
-                    P[i] = control.dlyap(A_cl.T, Q_bar, method='slycot') # transpose due to the convention in control.dlyap
+                    try:
+                        P[i] = control.dlyap(A_cl.T, Q_bar, method='slycot') # transpose due to the convention in control.dlyap
+                    except:
+                        print("[solve_closed_loop_inf_hor_problem] An error occurred while solving the Lyapunov equation")
                 M = np.linalg.inv(np.eye(n_x) + np.sum(B @ np.linalg.inv(R) @ B.T3D() @ P, axis=0))
                 A_cl = M @ A
                 K = - np.linalg.inv(R) @ B.T3D() @ P @ A_cl   # Batch multiplication
@@ -402,17 +408,17 @@ class LQ:
                 if  err < eps_error:
                     break
         if err > eps_error:
-            print("[solve_open_loop_inf_hor_problem] Could not find solution")
+            print("[solve_closed_loop_inf_hor_problem] Could not find solution")
         # Compute optimal controllers
         return P, K
 
-    def set_term_cost_to_inf_hor_sol(self, mode="OL", n_iter=10000, eps_error=10**(-6)):
+    def set_term_cost_to_inf_hor_sol(self, mode="CL", method='lyap', n_iter=10000, eps_error=10**(-6)):
         if mode=="OL":
-            self.P, self.K = self.solve_open_loop_inf_hor_problem(n_iter=10000, eps_error=10**(-6))
+            self.P, self.K = self.solve_open_loop_inf_hor_problem(n_iter=n_iter, eps_error=eps_error)
         elif mode=="CL":
-            self.P, self.K = self.solve_closed_loop_inf_hor_problem(n_iter=10000, eps_error=10**(-6))
+            self.P, self.K = self.solve_closed_loop_inf_hor_problem(n_iter=n_iter,  method=method, eps_error=eps_error)
         else:
-            raise ValueError("[dyngames::LQ::set_term_cost_to_inf_hor_sol] mode has to be 'OL' or 'CL' ")
+            raise ValueError("[dyngames::LQ::set_term_cost_to_inf_hor_sol] mode needs to be either 'OL' or 'CL' ")
         # Re-create cost functions with the new terminal cost
         self.W, self.G, self.H = self.define_cost_functions()
 
@@ -423,22 +429,22 @@ class LQ:
         B = np.zeros((N_agents, n_states, n_inputs))
         Q = np.zeros((N_agents, n_states, n_states))
         R = np.zeros((N_agents, n_inputs, n_inputs))
-        for i in range(N_agents):
-            attempt_controllable = 0
-            max_norm_eig = 0
-            # limit maximum norm of eigenvalues so that the prediction model does not explode
+        attempt_controllable = 0
+        max_norm_eig = 0
+        # limit maximum norm of eigenvalues so that the prediction model does not explode
+        is_controllable = False
+        while (is_controllable == False and attempt_controllable < 10) or max_norm_eig > 1.2:
             is_controllable = False
-            while (is_controllable == False and attempt_controllable < 10) or max_norm_eig > 1.2:
-                is_controllable = False
-                A = -1 + 2 * np.random.random_sample(size=[n_states, n_states])
-                B = -1 + 2 * np.random.random_sample(size=[N_agents, n_states, n_inputs])
-                max_norm_eig = max(np.linalg.norm(np.expand_dims(np.linalg.eigvals(A), 1), axis=1))
-                for i in range(N_agents):
-                    is_controllable = is_controllable or (np.linalg.matrix_rank(control.ctrb(A, B[i])) == n_states)
-                attempt_controllable = attempt_controllable + 1
-                if attempt_controllable % 10 == 0:
-                    n_inputs = n_inputs + 1
+            A = -1 + 2 * np.random.random_sample(size=[n_states, n_states])
+            B = -1 + 2 * np.random.random_sample(size=[N_agents, n_states, n_inputs])
+            max_norm_eig = max(np.linalg.norm(np.expand_dims(np.linalg.eigvals(A), 1), axis=1))
+            for j in range(N_agents):
+                is_controllable = is_controllable or (np.linalg.matrix_rank(control.ctrb(A, B[j])) == n_states)
+            attempt_controllable = attempt_controllable + 1
+            if attempt_controllable % 10 == 0:
+                n_inputs = n_inputs + 1
+        for i in range(N_agents):
             Q[i, :, :] =  np.eye(n_states)
-            R[i, :, :] = generate_random_monotone_matrix(1, n_inputs) #random pos. def. matrix
+            R[i, :, :] = generate_random_monotone_matrix(1, n_inputs, str_mon=1) #random pos. def. matrix
             R[i, :, :] = (R[i, :, :] + R[i, :, :].T) / 2
         return A, B, Q, R
