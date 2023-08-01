@@ -309,17 +309,15 @@ class LQ:
             M = np.linalg.inv(np.eye(n_x) + np.sum(B @ np.linalg.inv(R) @ B.T3D() @ P, axis=0))
             K = - np.linalg.inv(R) @ B.T3D() @ P @ M @ A  # Batch multiplication
             if n_iter%10==0:
-                # Test solution
+                # Test solution: Check if (9) [Freiling-Jank-Kandil '99] is satisfied
                 err = 0
                 M = np.linalg.inv(np.eye(n_x) + np.sum(B @ np.linalg.inv(R) @ B.T3D() @ P, axis=0))
                 for i in range(N):
-                    err = err + norm(Q - P[i] + A.T @ P[i] @ M @ A)
+                    err = err + norm(Q[i] - P[i] + A.T @ P[i] @ M @ A)
                 if  err < eps_error:
                     break
         if err > eps_error:
             print("[solve_open_loop_inf_hor_problem] Could not find solution")
-        # Compute optimal controllers
-        K = - np.linalg.inv(R) @ B.T3D() @ P  # Batch multiplication
         return P, K
 
 
