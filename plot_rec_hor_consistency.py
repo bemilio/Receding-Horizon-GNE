@@ -29,8 +29,9 @@ f = open('results/rec_hor_consistency_result_0.pkl', 'rb')
 #         filepaths.append(filepath_candidate)
 # f = open(filepaths[0], 'rb')
 # Retrieve common info
-x_store, u_store, residual_store, u_pred_traj_store, x_pred_traj_store, u_shifted_traj_store, K_store, A_store, B_store,\
-                  T_hor_to_test, N_agents_to_test = pickle.load(f)
+x_store, u_store, residual_store, u_pred_traj_store, x_pred_traj_store, u_shifted_traj_store,\
+                  K_CL_store, K_OL_store, A_store, B_store,\
+                  T_hor_to_test, N_agents_to_test, status_store = pickle.load(f)
 
 # u_pred_traj_store is [ [ np.zeros((N_random_tests, N_agents, T_hor * n_u, T_sim)) for N_agents in N_agents_to_test ] for T_hor in T_hor_to_test ]
 # u_store is [ [ np.zeros((N_random_tests, N_agents, n_u, T_sim)) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
@@ -40,12 +41,10 @@ N_random_tests = u_pred_traj_store[0][0].shape[0]
 n_u = u_store[0][0].shape[2]
 T_sim = u_pred_traj_store[0][0].shape[3]
 
-# x_store is (N_random_tests, N_agents, n_x, T_sim)
-n_x = x_store[0][0].shape[2]
+# x_store is (N_random_tests, n_x, T_sim)
+n_x = x_store[0][0].shape[1]
 
 eps = 10**(-4)
-
-fig, ax = plt.subplots(1, figsize=(5 * 1, 1.8 * 2), layout='constrained', sharex=True)
 
 diff_predicted_trajectory_and_shifted = np.zeros((N_random_tests, N_tested_T_hor, N_tested_N_agents))
 
@@ -55,11 +54,12 @@ diff_predicted_trajectory_and_shifted = np.zeros((N_random_tests, N_tested_T_hor
 for i_T_hor in range(N_tested_T_hor):
     for i_N_agents in range(N_tested_N_agents):
         for i_random_test in range(N_random_tests):
-            for t in range(T_sim-1):
-                diff_predicted_trajectory_and_shifted[i_random_test, i_T_hor, i_N_agents] = \
-                    max(diff_predicted_trajectory_and_shifted[i_random_test, i_T_hor, i_N_agents],
-                    norm(u_pred_traj_store[i_T_hor][i_N_agents][i_random_test, :, :, t+1 ] - \
-                         u_shifted_traj_store[i_T_hor][i_N_agents][i_random_test, :, :, t ] ) )
+            if (status_store[i_T_hor][i_N_agents][i_random_test] == 'solved'):
+                for t in range(T_sim-1):
+                    diff_predicted_trajectory_and_shifted[i_random_test, i_T_hor, i_N_agents] = \
+                        max(diff_predicted_trajectory_and_shifted[i_random_test, i_T_hor, i_N_agents],
+                        norm(u_pred_traj_store[i_T_hor][i_N_agents][i_random_test, :, :, t+1 ] - \
+                             u_shifted_traj_store[i_T_hor][i_N_agents][i_random_test, :, :, t ] ) )
 
 # Difference between predicted next input and actual input:
 # \max_t \| u_{t+1 | t+1} - u_{t+1 | t} \|
@@ -67,41 +67,67 @@ diff_predicted_next_input_and_actual = np.zeros((N_random_tests, N_tested_T_hor,
 for i_T_hor in range(N_tested_T_hor):
     for i_N_agents in range(N_tested_N_agents):
         for i_random_test in range(N_random_tests):
-            for t in range(T_sim-1):
-                diff_predicted_next_input_and_actual[i_random_test, i_T_hor, i_N_agents] = \
-                    max(diff_predicted_next_input_and_actual[i_random_test, i_T_hor, i_N_agents],
-                    norm(u_store[i_T_hor][i_N_agents][i_random_test, :, :, t+1 ] - \
-                         u_pred_traj_store[i_T_hor][i_N_agents][i_random_test, :, n_u:2*n_u, t ] ) )
+            if (status_store[i_T_hor][i_N_agents][i_random_test] == 'solved'):
+                for t in range(T_sim-1):
+                    diff_predicted_next_input_and_actual[i_random_test, i_T_hor, i_N_agents] = \
+                        max(diff_predicted_next_input_and_actual[i_random_test, i_T_hor, i_N_agents],
+                        norm(u_store[i_T_hor][i_N_agents][i_random_test, :, :, t+1 ] - \
+                             u_pred_traj_store[i_T_hor][i_N_agents][i_random_test, :, n_u:2*n_u, t ] ) )
 
-# Difference between first input and input computed using K:
-diff_first_input_and_LQR = np.zeros((N_random_tests, N_tested_T_hor, N_tested_N_agents))
+# Difference between first input and input computed using K OL:
+diff_first_input_and_OL = np.zeros((N_random_tests, N_tested_T_hor, N_tested_N_agents))
 for i_T_hor in range(N_tested_T_hor):
     for i_N_agents in range(N_tested_N_agents):
         for i_random_test in range(N_random_tests):
-            for t in range(T_sim-1):
-                K = K_store[i_T_hor][i_N_agents][i_random_test,:]
-                x = x_store[i_T_hor][i_N_agents][i_random_test, :, :, t ]
-                diff_last_input_and_LQR[i_random_test, i_T_hor, i_N_agents] = \
-                    max(diff_last_input_and_LQR[i_random_test, i_T_hor, i_N_agents],
-                    norm(u_store[i_T_hor][i_N_agents][i_random_test, :, :, t+1 ] - \
-                        batch_mult_with_coulumn_stack(K, x) ) )
+            if (status_store[i_T_hor][i_N_agents][i_random_test] == 'solved'):
+                for t in range(T_sim-1):
+                    K = K_OL_store[i_T_hor][i_N_agents][i_random_test,:]
+                    x = x_store[i_T_hor][i_N_agents][i_random_test, :, t ]
+                    diff_first_input_and_OL[i_random_test, i_T_hor, i_N_agents] = \
+                        max(diff_first_input_and_OL[i_random_test, i_T_hor, i_N_agents],
+                            norm(u_store[i_T_hor][i_N_agents][i_random_test, :, :, t+1 ] - K @ x ))
 
-# Difference between last input and input computed using K:
-diff_last_input_and_LQR = np.zeros((N_random_tests, N_tested_T_hor, N_tested_N_agents))
+# Difference between last input and input computed using K OL:
+diff_last_input_and_OL = np.zeros((N_random_tests, N_tested_T_hor, N_tested_N_agents))
 for i_T_hor in range(N_tested_T_hor):
     for i_N_agents in range(N_tested_N_agents):
         for i_random_test in range(N_random_tests):
-            for t in range(T_sim-1):
-                K = K_store[i_T_hor][i_N_agents][i_random_test,:]
-                x_second_last = x_pred_traj_store[i_T_hor][i_N_agents][i_random_test, :, -2*n_x:-n_x, t ]
-                u_last = u_pred_traj_store[i_T_hor][i_N_agents][i_random_test, :, -n_u:, t ]
-                diff_last_input_and_LQR[i_random_test, i_T_hor, i_N_agents] = \
-                    max(diff_last_input_and_LQR[i_random_test, i_T_hor, i_N_agents],
-                        norm(u_last- batch_mult_with_coulumn_stack(K, x_second_last) ) )
+            if (status_store[i_T_hor][i_N_agents][i_random_test] == 'solved'):
+                for t in range(T_sim-1):
+                    K = K_OL_store[i_T_hor][i_N_agents][i_random_test,:]
+                    x_second_last = x_pred_traj_store[i_T_hor][i_N_agents][i_random_test, -2*n_x:-n_x, t ]
+                    u_last = u_pred_traj_store[i_T_hor][i_N_agents][i_random_test, :, -n_u:, t ]
+                    diff_last_input_and_OL[i_random_test, i_T_hor, i_N_agents] = \
+                        max(diff_last_input_and_OL[i_random_test, i_T_hor, i_N_agents], norm(u_last - K @ x_second_last))
 
+# Difference between first input and input computed using K CL:
+diff_first_input_and_CL = np.zeros((N_random_tests, N_tested_T_hor, N_tested_N_agents))
+for i_T_hor in range(N_tested_T_hor):
+    for i_N_agents in range(N_tested_N_agents):
+        for i_random_test in range(N_random_tests):
+            if (status_store[i_T_hor][i_N_agents][i_random_test] == 'solved'):
+                for t in range(T_sim-1):
+                    K = K_CL_store[i_T_hor][i_N_agents][i_random_test,:]
+                    x = x_store[i_T_hor][i_N_agents][i_random_test, :, t ]
+                    diff_first_input_and_CL[i_random_test, i_T_hor, i_N_agents] = \
+                        max(diff_first_input_and_CL[i_random_test, i_T_hor, i_N_agents],
+                            norm(u_store[i_T_hor][i_N_agents][i_random_test, :, :, t+1 ] - K @ x ))
 
+# Difference between last input and input computed using K CL:
+diff_last_input_and_CL = np.zeros((N_random_tests, N_tested_T_hor, N_tested_N_agents))
+for i_T_hor in range(N_tested_T_hor):
+    for i_N_agents in range(N_tested_N_agents):
+        for i_random_test in range(N_random_tests):
+            if (status_store[i_T_hor][i_N_agents][i_random_test] == 'solved'):
+                for t in range(T_sim-1):
+                    K = K_CL_store[i_T_hor][i_N_agents][i_random_test,:]
+                    x_second_last = x_pred_traj_store[i_T_hor][i_N_agents][i_random_test, -2*n_x:-n_x, t ]
+                    u_last = u_pred_traj_store[i_T_hor][i_N_agents][i_random_test, :, -n_u:, t ]
+                    diff_last_input_and_CL[i_random_test, i_T_hor, i_N_agents] = \
+                        max(diff_last_input_and_CL[i_random_test, i_T_hor, i_N_agents], norm(u_last - K @ x_second_last))
 
-fig, ax = plt.subplots(4, figsize=(5 * 1, 1.8 * 3), layout='constrained', sharex=True)
+print("Values computed, plotting...")
+fig, ax = plt.subplots(6, figsize=(5 * 1, 1.8 * 6), layout='constrained', sharex=True)
 
 ax[0].boxplot(np.amax(diff_predicted_trajectory_and_shifted, axis = 2))
 ax[0].set(ylabel=r'$\max_t \|{\mathbf{u}}_{t+1} -  {\mathbf{u}}^{\mathrm{shift}}_{t}\|$' )
@@ -113,19 +139,27 @@ ax[1].set(xlabel=r'horizon' )
 # ax[1].set_xticks(np.arange(len(T_hor_to_test)))
 # ax[1].set_xticklabels(T_hor_to_test)
 
-ax[2].boxplot(np.amax(diff_first_input_and_LQR, axis = 2))
-ax[2].set(ylabel=r'$\max_t \| u_{t | t} - K x_{t} \| $' )
+ax[2].boxplot(np.amax(diff_first_input_and_OL, axis = 2))
+ax[2].set(ylabel=r'$\max_t \| u_{t | t} - K^{\mathrm{OL}} x_{t} \| $' )
 ax[2].set(xlabel=r'horizon' )
 
-ax[3].boxplot(np.amax(diff_last_input_and_LQR, axis = 2))
-ax[3].set(ylabel=r'$\max_t \| u_{t+T | t} - K x_{t+T|t} \| $' )
+ax[3].boxplot(np.amax(diff_last_input_and_OL, axis = 2))
+ax[3].set(ylabel=r'$\max_t \| u_{t+T | t} - K^{\mathrm{OL}} x_{t+T|t} \| $' )
 ax[3].set(xlabel=r'horizon' )
+
+ax[4].boxplot(np.amax(diff_first_input_and_CL, axis = 2))
+ax[4].set(ylabel=r'$\max_t \| u_{t | t} - K^{\mathrm{CL}} x_{t} \| $' )
+ax[4].set(xlabel=r'horizon' )
+
+ax[5].boxplot(np.amax(diff_last_input_and_CL, axis = 2))
+ax[5].set(ylabel=r'$\max_t \| u_{t+T | t} - K^{\mathrm{CL}} x_{t+T|t} \| $' )
+ax[5].set(xlabel=r'horizon' )
 
 # ax[1].set_xticks(np.arange(len(T_hor_to_test)))
 ax[2].set_xticks(range(1,N_tested_T_hor+1),T_hor_to_test)
 plt.savefig('results/figures/rec_hor_consistency_vs_horizon.png', dpi=600)
 
-fig, ax = plt.subplots(4, figsize=(5 * 1, 1.8 * 3), layout='constrained', sharex=True)
+fig, ax = plt.subplots(4, figsize=(5 * 1, 1.8 * 4), layout='constrained', sharex=True)
 
 ax[0].boxplot(np.amax(diff_predicted_trajectory_and_shifted, axis = 1))
 ax[0].set(ylabel=r'$\max_t \|{\mathbf{u}}_{t+1} -  {\mathbf{u}}^{\mathrm{shift}}_{t}\|$' )
@@ -136,14 +170,24 @@ ax[1].set(ylabel=r'$\max_t \| u_{t+1 | t+1} - u_{t+1 | t} \| $' )
 ax[1].set(xlabel=r'$N$ agents' )
 # ax[1].set_xticks(np.arange(len(T_hor_to_test)))
 
-ax[2].boxplot(np.amax(diff_first_input_and_LQR, axis = 1))
-ax[2].set(ylabel=r'$\max_t \| u_{t | t} - K x_{t} \| $' )
+ax[2].boxplot(np.amax(diff_first_input_and_OL, axis = 1))
+ax[2].set(ylabel=r'$\max_t \| u_{t | t} - K^{OL} x_{t} \| $' )
 ax[2].set(xlabel=r'$N$ agents' )
 ax[2].set_xticks(range(1,N_tested_N_agents+1),N_agents_to_test)
 
-ax[3].boxplot(np.amax(diff_last_input_and_LQR, axis = 1))
-ax[3].set(ylabel=r'$\max_t \| u_{t+T | t} - K x_{t+T|t} \| $' )
+ax[3].boxplot(np.amax(diff_last_input_and_OL, axis = 1))
+ax[3].set(ylabel=r'$\max_t \| u_{t+T | t} - K^{OL} x_{t+T|t} \| $' )
 ax[3].set(xlabel=r'$N$ agents' )
+
+ax[2].boxplot(np.amax(diff_first_input_and_CL, axis = 1))
+ax[2].set(ylabel=r'$\max_t \| u_{t | t} - K^{CL} x_{t} \| $' )
+ax[2].set(xlabel=r'$N$ agents' )
+ax[2].set_xticks(range(1,N_tested_N_agents+1),N_agents_to_test)
+
+ax[3].boxplot(np.amax(diff_last_input_and_CL, axis = 1))
+ax[3].set(ylabel=r'$\max_t \| u_{t+T | t} - K^{CL} x_{t+T|t} \| $' )
+ax[3].set(xlabel=r'$N$ agents' )
+
 
 plt.savefig('results/figures/rec_hor_consistency_vs_N_agents.png', dpi=600)
 

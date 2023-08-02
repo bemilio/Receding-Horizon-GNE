@@ -27,12 +27,12 @@ if __name__ == '__main__':
     logging.info("Random seed set to  " + str(seed))
     np.random.seed(seed)
     N_it_per_residual_computation = 10
-    N_agents_to_test = [4]
-    N_random_tests = 5
+    N_agents_to_test = [8]
+    N_random_tests = 20
 
     # parameters
     N_iter = 100000
-    n_x = 3
+    n_x = 4
     n_u = 2
     T_hor_to_test = [3, 9]
     T_sim = 20
@@ -51,7 +51,7 @@ if __name__ == '__main__':
     K_OL_store = [ [ np.zeros((N_random_tests, N_agents, n_u, n_x)) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
     A_store = [ [ np.zeros((N_random_tests, n_x, n_x)) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
     B_store = [ [ np.zeros((N_random_tests, N_agents, n_x, n_u)) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
-
+    status_store = [[ [ 'not run' for _ in range(N_random_tests)] for _ in N_agents_to_test] for _ in T_hor_to_test]
     test_counter = 0
 
     for test in range(N_random_tests):
@@ -122,7 +122,12 @@ if __name__ == '__main__':
                         #  Algorithm run
                         alg.run_once()
                     if r.item()>eps:
-                        raise RuntimeError("Nash equilibrium not found")
+                        # If problem is not solved, mark it as unsolved and proceed to next test.
+                        warnings.warn("Nash equilibrium not found")
+                        status_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test] = 'not solved'
+                        break
+                    else:
+                        status_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test] = 'solved'
                     # Convert optimization variable into state and input
                     u_all, d, r, c = alg.get_state()
                     u_0 = dyn_game.get_input_timestep_from_opt_var(u_all, 0)
@@ -133,8 +138,8 @@ if __name__ == '__main__':
                     u_shifted_traj_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :, :, t] = dyn_game.get_shifted_trajectory_from_opt_var(u_all, x_0).squeeze(2)
 
                     # Just for testing, check is u_0 = K x_0
-                    if norm(u_0 - dyn_game.K @ x_0) > eps:
-                        warnings.warn("The inf. hor. controller is not the same as the MPC input ")
+                    # if norm(u_0 - dyn_game.K @ x_0) > eps:
+                    #     warnings.warn("The inf. hor. controller is not the same as the MPC input ")
 
                     # just for testing, check whether last state is as predicted
                     # if t >= 1:
@@ -160,7 +165,7 @@ if __name__ == '__main__':
     f = open('rec_hor_consistency_result_'+ str(job_id) + ".pkl", 'wb')
     pickle.dump([ x_store, u_store, residual_store, u_pred_traj_store, x_pred_traj_store, u_shifted_traj_store,\
                   K_CL_store, K_OL_store, A_store, B_store,\
-                  T_hor_to_test, N_agents_to_test], f)
+                  T_hor_to_test, N_agents_to_test, status_store], f)
     f.close()
     print("Saved")
     logging.info("Saved, job done")
