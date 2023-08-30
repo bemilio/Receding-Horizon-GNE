@@ -1,7 +1,6 @@
 import warnings
 
 import numpy as np
-import networkx as nx
 # import torch
 import pickle
 import games.dyngames as dyngames
@@ -27,15 +26,15 @@ if __name__ == '__main__':
     logging.info("Random seed set to  " + str(seed))
     np.random.seed(seed)
     N_it_per_residual_computation = 10
-    N_agents_to_test = [8]
-    N_random_tests = 20
+    N_agents_to_test = [2]
+    N_random_tests = 1
 
     # parameters
     N_iter = 100000
-    n_x = 4
-    n_u = 2
-    T_hor_to_test = [3, 9]
-    T_sim = 20
+    n_x = 6
+    n_u = 3
+    T_hor_to_test = [2, 3, 6, 9, 12]
+    T_sim = 10
     eps = 10**(-5) # convergence threshold
 
     ##########################################
@@ -47,6 +46,7 @@ if __name__ == '__main__':
     x_pred_traj_store = [ [ np.zeros((N_random_tests, T_hor * n_x, T_sim)) for N_agents in N_agents_to_test ] for T_hor in T_hor_to_test ]
     u_shifted_traj_store = [ [ np.zeros((N_random_tests, N_agents, T_hor * n_u, T_sim)) for N_agents in N_agents_to_test ] for T_hor in T_hor_to_test ]
     residual_store = [ [np.zeros((N_random_tests, (N_iter // N_it_per_residual_computation), T_sim)) for _ in N_agents_to_test ] for _ in T_hor_to_test ]
+    cost_store = [[np.zeros((N_random_tests, N_agents, T_sim)) for N_agents in N_agents_to_test] for _ in T_hor_to_test]
     K_CL_store = [ [ np.zeros((N_random_tests, N_agents, n_u, n_x)) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
     K_OL_store = [ [ np.zeros((N_random_tests, N_agents, n_u, n_x)) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
     A_store = [ [ np.zeros((N_random_tests, n_x, n_x)) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
@@ -89,6 +89,9 @@ if __name__ == '__main__':
                     print("Test " + str(test_counter) \
                           + " of " + str(N_random_tests * len(T_hor_to_test) * len(N_agents_to_test)) \
                           + "; Timestep " + str(t) + " of " + str(T_sim))
+                    logging.info("Test " + str(test_counter) \
+                          + " of " + str(N_random_tests * len(T_hor_to_test) * len(N_agents_to_test)) \
+                          + "; Timestep " + str(t) + " of " + str(T_sim))
                     # if t>=1:
                         # set second-to-last state to be equal to the predicted last state of previous timestep
                         # dyn_game.A_eq_loc, dyn_game.b_eq_loc_from_x, dyn_game.b_eq_loc_affine = \
@@ -106,6 +109,7 @@ if __name__ == '__main__':
                         alg = pFB_algorithm(game_t, primal_stepsize=0.001, dual_stepsize=0.001, x_0=u_shifted, dual_0=d)
                         _, _, r, _  = alg.get_state()
                         print("Res. of shifted seq: " + str(r))
+                        logging.info("Res. of shifted seq: " + str(r))
                     # alg.set_stepsize_using_Lip_const(safety_margin=.9)
                     index_storage = 0
                     avg_time_per_it = 0
@@ -124,6 +128,7 @@ if __name__ == '__main__':
                     if r.item()>eps:
                         # If problem is not solved, mark it as unsolved and proceed to next test.
                         warnings.warn("Nash equilibrium not found")
+                        logging.warn("Nash equilibrium not found")
                         status_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test] = 'not solved'
                         break
                     else:
@@ -133,8 +138,9 @@ if __name__ == '__main__':
                     u_0 = dyn_game.get_input_timestep_from_opt_var(u_all, 0)
                     u_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :, :, t] = u_0.squeeze(2)
                     residual_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, index_storage-1,t]  = r
+                    cost_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :, t] = c.squeeze()
                     u_pred_traj_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :, :, t] = u_all.squeeze(2)
-                    x_pred_traj_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :, t] = (dyn_game.T @ x_0 + np.sum(dyn_game.S @ u_all, axis=0)).squeeze(1)
+                    x_pred_traj_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :, t] = (dyn_game.T @ x_0 + np.sum(dyn_game.S @ u_all, axis=0)).squeeze()
                     u_shifted_traj_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :, :, t] = dyn_game.get_shifted_trajectory_from_opt_var(u_all, x_0).squeeze(2)
 
                     # Just for testing, check is u_0 = K x_0
@@ -165,7 +171,7 @@ if __name__ == '__main__':
     f = open('rec_hor_consistency_result_'+ str(job_id) + ".pkl", 'wb')
     pickle.dump([ x_store, u_store, residual_store, u_pred_traj_store, x_pred_traj_store, u_shifted_traj_store,\
                   K_CL_store, K_OL_store, A_store, B_store,\
-                  T_hor_to_test, N_agents_to_test, status_store], f)
+                  T_hor_to_test, N_agents_to_test, status_store, cost_store], f)
     f.close()
     print("Saved")
     logging.info("Saved, job done")

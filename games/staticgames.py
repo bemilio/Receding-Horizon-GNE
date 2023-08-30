@@ -28,10 +28,10 @@ class LinearQuadratic:
     # A_shared \in R^N*n_m*n_x,  where A_shared[i,:,:] defines the local contribution to the shared ineq. constraints
     # b_shared \in R^N*n_x,  where b_shared[i,:] is the affine part of the shared ineq. constraints
     # The game is in the form:
-    # \sum .5 x' Q_i x + q_i'x
+    # \sum .5 x' Q_i x + q_i'x + h_i
     # s.t. \sum_i A_shared_i x_i <= \sum_i b_shared_i
     #             A_loc_i x_i <= b_loc_i
-    def __init__(self, Q, q, A_ineq_loc, b_ineq_loc, A_eq_loc, b_eq_loc, A_ineq_shared, b_ineq_shared, communication_graph=None, test=False):
+    def __init__(self, Q, q, h, A_ineq_loc, b_ineq_loc, A_eq_loc, b_eq_loc, A_ineq_shared, b_ineq_shared, communication_graph=None, test=False):
         if test:
             N, n_opt_var, Q, q, A_ineq_shared, b_ineq_shared, \
                 A_ineq_loc, b_ineq_loc, A_eq_loc, b_eq_loc, communication_graph = self.setToTestGameSetup()
@@ -55,17 +55,18 @@ class LinearQuadratic:
         self.n_shared_ineq_constr = self.A_ineq_shared.shape[1]
         # Define the game mapping and cost
         self.F = self.GameMapping(Q, q)
-        self.J = self.GameCost(Q, q)
+        self.J = self.GameCost(Q, q, h)
         # self.K = self.Consensus(communication_graph) #TODO
 
     class GameCost():
-        def __init__(self, Q, q):
+        def __init__(self, Q, q, h):
             self.Q = Q
             self.q = q
+            self.h = h
 
         def compute(self, x):
             x_repeated = multiagent_array(np.broadcast_to(x.reshape(-1,1), (x.shape[0],x.shape[0]*x.shape[1],1))) # x_repeated[i, :, :] = col_i(x_i)
-            cost = x_repeated.T3D() @ (self.Q @ x_repeated + self.q)
+            cost = x_repeated.T3D() @ (self.Q @ x_repeated + self.q) + self.h
             return cost
 
     class GameMapping():

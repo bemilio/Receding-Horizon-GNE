@@ -167,9 +167,10 @@ class LQ:
         # Obtain linear part of the cost from x_0. Note that the mapping x_0->cost wants x_0 = col_i(x_0^i),
         # while the mapping to the affine part constraints is agent-wise, that is, it only requires x_0^i
         q = self.G @ x_0  # batch mult
+        h = x_0.T @ self.H @ x_0 # affine part of the cost
         C = np.concatenate((self.C_u_sh, self.C_x_sh), axis=1)
         d = np.concatenate((self.d_u_sh, self.D_x_sh @ x_0 + self.d_x_sh), axis=1)
-        return staticgames.LinearQuadratic(Q, q, self.C_u_loc, self.d_u_loc, self.C_eq, self.d_eq, C, d)
+        return staticgames.LinearQuadratic(Q, q, h, self.C_u_loc, self.d_u_loc, self.C_eq, self.d_eq, C, d)
 
     def define_cost_functions(self):
         """
@@ -297,18 +298,33 @@ class LQ:
         P = np.zeros((N, n_x, n_x))
         # Stable initialization: cooperative optimal controller
         B_coop = np.column_stack([B[i] for i in range(N)])
-        P_coop = solve_discrete_are(A, B_coop, np.eye(n_x), np.eye(N * n_u))
-        K_coop = - np.linalg.inv(np.eye(N * n_u) + B_coop.T @ P_coop @ B_coop) @ (B_coop.T @ P_coop @ A)
+        P_init, K_init = self.solve_closed_loop_inf_hor_problem()
+        P[:] = P_init[:]
+        K[:] = K_init[:]
         for i in range(N):
-            K[i] = K_coop[n_u*i:n_u*(i+1), :]
-            P[i] = P_coop # I think this works as far as we initialize to some P>0
+            if min(np.linalg.eigvalsh(P_init[i])) < 0:
+                warnings.warn("The closed loop P is non-positive definite")
+        if max(np.abs(np.linalg.eigvals(A + np.sum(B @ K_init, axis=0)))) > 1.001:
+            warnings.warn("The infinite horizon CL-GNE has an unstable dynamics")
+        # P_init = solve_discrete_are(A, B_coop, np.eye(n_x), np.eye(N * n_u))
+        # K_init = - np.linalg.inv(np.eye(N * n_u) + B_coop.T @ P_coop @ B_coop) @ (B_coop.T @ P_coop @ A)
+        # for i in range(N):
+        #     K[i] = K_init[n_u*i:n_u*(i+1), :]
+        #     P[i] = P_init # I think this works as far as we initialize to some P>0
         for k in range(n_iter):
+            ''' 
+            IMPORTANT: The commented line does not work (as in, it leads to a negative-definite solution P and unstable dynamics)
+            and it takes way more iterations. 
+            Why???
+            '''
+            # A_cl = A + np.sum(B @ np.linalg.inv(R) @ B.T3D() @ np.linalg.inv(A.T) @ (Q - P) , axis=0)
             A_cl = A + np.sum(B @ K, axis=0)
             for i in range(N):
                 try:
                     P[i][:, :] = control.dlyap(A.T, A_cl.T, Q[i])  # -A.T @ X A_cl + X - Q[i] = 0
-                except:
-                    print("[solve_open_loop_inf_hor_problem] An error occurred while solving the Lyapunov equation")
+                except Exception as e:
+                    print("[solve_open_loop_inf_hor_problem] An error occurred while solving the Sylvester equation:")
+                    print(str(e))
             M = np.linalg.inv(np.eye(n_x) + np.sum(B @ np.linalg.inv(R) @ B.T3D() @ P, axis=0))
             K = - np.linalg.inv(R) @ B.T3D() @ P @ M @ A  # Batch multiplication
             if n_iter%10==0:
@@ -321,6 +337,11 @@ class LQ:
                     break
         if err > eps_error:
             print("[solve_open_loop_inf_hor_problem] Could not find solution")
+        for i in range(N):
+            if min(np.linalg.eigvalsh(P[i])) < 0:
+                warnings.warn("The open loop P is non-positive definite")
+        if max(np.abs(np.linalg.eigvals(A + np.sum(B @ K, axis=0)))) > 1.001:
+            warnings.warn("The infinite horizon OL-GNE has an unstable dynamics")
         return P, K
 
 
@@ -441,8 +462,8 @@ class LQ:
             for j in range(N_agents):
                 is_controllable = is_controllable or (np.linalg.matrix_rank(control.ctrb(A, B[j])) == n_states)
             attempt_controllable = attempt_controllable + 1
-            if attempt_controllable % 10 == 0:
-                n_inputs = n_inputs + 1
+        if is_controllable==False:
+            warnings.warn("System is not controllable")
         for i in range(N_agents):
             Q[i, :, :] =  np.eye(n_states)
             R[i, :, :] = generate_random_monotone_matrix(1, n_inputs, str_mon=1) #random pos. def. matrix

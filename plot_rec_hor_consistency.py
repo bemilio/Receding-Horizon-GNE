@@ -17,21 +17,62 @@ import os
 from scipy.linalg import norm
 from games.staticgames import batch_mult_with_coulumn_stack
 
-f = open('results/rec_hor_consistency_result_0.pkl', 'rb')
-
-
-# # directory = '/Users/...'
-# n_files = 0
-# filepaths = []
-# for filename in os.listdir(directory):
-#     filepath_candidate = os.path.join(directory, filename)
-#     if os.path.isfile(filepath_candidate) and filepath_candidate.endswith('.pkl'):
-#         filepaths.append(filepath_candidate)
-# f = open(filepaths[0], 'rb')
-# Retrieve common info
-x_store, u_store, residual_store, u_pred_traj_store, x_pred_traj_store, u_shifted_traj_store,\
-                  K_CL_store, K_OL_store, A_store, B_store,\
-                  T_hor_to_test, N_agents_to_test, status_store = pickle.load(f)
+load_results_from_single_file = False
+if load_results_from_single_file:
+    f = open('results/rec_hor_consistency_result_0.pkl', 'rb')
+    x_store, u_store, residual_store, u_pred_traj_store, x_pred_traj_store, u_shifted_traj_store, \
+        K_CL_store, K_OL_store, A_store, B_store, \
+        T_hor_to_test, N_agents_to_test, status_store = pickle.load(f)
+    f.close()
+else:
+    # Load all files in a directory
+    directory = r"C:\Users\ebenenati\surfdrive - Emilio Benenati@surfdrive.surf.nl\TUDelft\Simulations\Receding_horizon_games\30_aug_23\Results"
+    N_files = 0
+    for filename in os.listdir(directory):
+        if filename.find('.pkl')>=0:
+            N_files=N_files+1 #count all files
+    visited_nodes = {} #[test, T_horiz]
+    initial_junctions_stored = {} #[test]
+    final_destinations_stored = {} #[test]
+    congestion_baseline_stored = {} #[test]
+    N_tests=0
+    for filename in os.listdir(directory):
+        if filename.find('.pkl')>=0:
+            f=open(directory+"\\"+filename, 'rb')
+            x_store_file, u_store_file, residual_store_file, u_pred_traj_store_file, x_pred_traj_store_file, u_shifted_traj_store_file, \
+                K_CL_store_file, K_OL_store_file, A_store_file, B_store_file, \
+                T_hor_to_test, N_agents_to_test, status_store_file, cost_store_file = pickle.load(f)
+            if N_tests == 0:
+                x_store = x_store_file
+                u_store = u_store_file
+                residual_store = residual_store_file
+                u_pred_traj_store = u_pred_traj_store_file
+                x_pred_traj_store = x_pred_traj_store_file
+                u_shifted_traj_store = u_shifted_traj_store_file
+                K_CL_store = K_CL_store_file
+                K_OL_store = K_OL_store_file
+                A_store = A_store_file
+                B_store = B_store_file
+                status_store = status_store_file
+                cost_store = cost_store_file
+            else:
+                for T_hor_idx in range(len(T_hor_to_test)):
+                    for N_agents_idx in range(len(N_agents_to_test)):
+                        x_store[T_hor_idx][N_agents_idx] = np.concatenate((x_store[T_hor_idx][N_agents_idx], x_store_file[T_hor_idx][N_agents_idx]), axis=0)
+                        u_store[T_hor_idx][N_agents_idx] = np.concatenate((u_store[T_hor_idx][N_agents_idx], u_store_file[T_hor_idx][N_agents_idx]), axis=0)
+                        residual_store[T_hor_idx][N_agents_idx] = np.concatenate((residual_store[T_hor_idx][N_agents_idx], residual_store_file[T_hor_idx][N_agents_idx]), axis=0)
+                        u_pred_traj_store[T_hor_idx][N_agents_idx] = np.concatenate((u_pred_traj_store[T_hor_idx][N_agents_idx], u_pred_traj_store_file[T_hor_idx][N_agents_idx]), axis=0)
+                        x_pred_traj_store[T_hor_idx][N_agents_idx] = np.concatenate((x_pred_traj_store[T_hor_idx][N_agents_idx], x_pred_traj_store_file[T_hor_idx][N_agents_idx]), axis=0)
+                        u_shifted_traj_store[T_hor_idx][N_agents_idx] = np.concatenate((u_shifted_traj_store[T_hor_idx][N_agents_idx], u_shifted_traj_store_file[T_hor_idx][N_agents_idx]), axis=0)
+                        K_CL_store[T_hor_idx][N_agents_idx] = np.concatenate((K_CL_store[T_hor_idx][N_agents_idx], K_CL_store_file[T_hor_idx][N_agents_idx]), axis=0)
+                        K_OL_store[T_hor_idx][N_agents_idx] = np.concatenate((K_OL_store[T_hor_idx][N_agents_idx], K_OL_store_file[T_hor_idx][N_agents_idx]), axis=0)
+                        A_store[T_hor_idx][N_agents_idx] = np.concatenate((A_store[T_hor_idx][N_agents_idx], A_store_file[T_hor_idx][N_agents_idx]), axis=0)
+                        B_store[T_hor_idx][N_agents_idx] = np.concatenate((B_store[T_hor_idx][N_agents_idx], B_store_file[T_hor_idx][N_agents_idx]), axis=0)
+                        status_store[T_hor_idx][N_agents_idx] = np.concatenate((status_store[T_hor_idx][N_agents_idx], status_store_file[T_hor_idx][N_agents_idx]), axis=0)
+                        cost_store[T_hor_idx][N_agents_idx] = np.concatenate((cost_store[T_hor_idx][N_agents_idx], cost_store_file[T_hor_idx][N_agents_idx]), axis=0)
+            N_tests_file = x_store[0][0].shape[0]
+            N_tests = N_tests +N_tests_file
+print("Files loaded, computing values to plot...")
 
 # u_pred_traj_store is [ [ np.zeros((N_random_tests, N_agents, T_hor * n_u, T_sim)) for N_agents in N_agents_to_test ] for T_hor in T_hor_to_test ]
 # u_store is [ [ np.zeros((N_random_tests, N_agents, n_u, T_sim)) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
@@ -126,6 +167,15 @@ for i_T_hor in range(N_tested_T_hor):
                     diff_last_input_and_CL[i_random_test, i_T_hor, i_N_agents] = \
                         max(diff_last_input_and_CL[i_random_test, i_T_hor, i_N_agents], norm(u_last - K @ x_second_last))
 
+# Cumulative cost over time:
+cumulative_cost = np.zeros((N_random_tests, N_tested_T_hor, N_tested_N_agents, T_sim))
+for i_T_hor in range(N_tested_T_hor):
+    for i_N_agents in range(N_tested_N_agents):
+        for i_random_test in range(N_random_tests):
+            if (status_store[i_T_hor][i_N_agents][i_random_test] == 'solved'):
+                for t in range(T_sim-1):
+                    cumulative_cost[i_random_test, i_T_hor, i_N_agents, t] = np.sum(cost_store[i_T_hor][i_N_agents], axis=1)[i_random_test, t]
+
 print("Values computed, plotting...")
 fig, ax = plt.subplots(6, figsize=(5 * 1, 1.8 * 6), layout='constrained', sharex=True)
 
@@ -191,6 +241,14 @@ ax[3].set(xlabel=r'$N$ agents' )
 
 plt.savefig('results/figures/rec_hor_consistency_vs_N_agents.png', dpi=600)
 
+### Plot costs over time
+fig, ax = plt.subplots(1, figsize=(5 * 1, 1.8 * 2), layout='constrained', sharex=True)
+cumulative_cost_difference = (cumulative_cost[:, :, :, 1:] - cumulative_cost[:, :, :, :-1]).reshape(-1, cumulative_cost.shape[3]-1)
+plt.plot(range(T_sim-1), np.mean(cumulative_cost_difference, axis=0))
+plt.fill_between(range(T_sim-1), np.amax(cumulative_cost_difference, axis = 0), np.amin(cumulative_cost_difference, axis = 0), alpha=0.2)
+ax.set_xticks(range(T_sim-1))
+ax.set(ylabel=r'$\sum_i J^*_{t+1}-J^*_{t}$' )
+ax.set(xlabel=r't' )
 
 ### Plot residuals
 fig, ax = plt.subplots(1, figsize=(5 * 1, 1.8 * 2), layout='constrained', sharex=True)
