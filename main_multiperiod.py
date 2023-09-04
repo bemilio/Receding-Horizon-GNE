@@ -1,189 +1,228 @@
-import numpy as np
+import networkx
 import torch
-import pickle
-from FBF_algorithm_NON_aggregative import FBF_algorithm
-from GameDefinition import Game
-import time
-import logging
-import random
-# import matplotlib
-import control
-control.use_numpy_matrix(flag=True, warn=True)
-import sys
+import numpy as np
+import networkx as nx
+from cmath import inf
+from operators import backwardStep
 
-import matplotlib.pyplot as plt
-from operator import itemgetter
-#
-# torch.Tensor.ndim = property(lambda self: len(self.shape))  # Necessary to use matplotlib with tensors
-# matplotlib.use('TkAgg')
+torch.set_default_dtype(torch.float64)
 
-def set_stepsizes(N, A_ineq_shared, L, algorithm='FBF'):
-    theta = 0
-    if algorithm == 'FRB':
-        delta = 4*L / (1-3*theta)
-        eigval, eigvec = torch.linalg.eig(torch.bmm(A_ineq_shared, torch.transpose(A_ineq_shared, 1, 2)))
-        eigval = torch.real(eigval)
-        alpha = 0.5/((torch.max(torch.max(eigval, 1)[0])) + delta)
-        beta =   0.5/(torch.sum(torch.max(eigval, 1)[0])/N + delta)
-    if algorithm == 'FBF':
-        eigval, eigvec = torch.linalg.eig(torch.sum(torch.bmm(A_ineq_shared, torch.transpose(A_ineq_shared, 1, 2)), 0)  )
-        eigval = torch.real(eigval)
-        alpha = 0.05/(L+torch.max(eigval))
-        beta = 0.05/(L+torch.max(eigval))
-    return (alpha.item(), beta.item(), theta)
+class Game:
+    # Q \in R^N*N*n_x*n_x, block matrix where Q[i,j,:,:]=Q_ij
+    # Define distributed linearly coupled game where each agent has the same number of opt. variables
+    # \sum x_i' Q_ij x_j + c_i'x_i
+    # s.t. A_loc_i x_i <=  local_up_bound_i
+    #      \sum_i A_shared_i x_i <=  b_shared
+    #
+    # (Facoltative): Selection function (cooperative)
+    # Q_sel has the same structure as Q.
+    # The selection function is x'Q_sel x + c_sel' x
+    # Define distributed linearly coupled game where each agent has the same number of opt. variables
+    def __init__(self, N, n_opt_var, communication_graph, Q, c, A_eq_loc, A_ineq_loc, A_shared, b_eq_loc, b_ineq_loc, b_shared,
+                 Q_sel=None, c_sel=None, test=False):
+        if test:
+            N, n_opt_var, Q, c, Q_sel, c_sel, A_shared, b_shared, \
+                A_eq_loc, A_ineq_loc, b_eq_loc, b_ineq_loc, communication_graph = self.setToTestGameSetup()
+        self.N_agents = N
+        index_x = 0
+        self.n_opt_variables = n_opt_var
+        # Local constraints
+        self.A_eq_loc = A_eq_loc
+        self.A_ineq_loc = A_ineq_loc
+        self.b_eq_loc = b_eq_loc
+        self.b_ineq_loc = b_ineq_loc
+        # Shared constraints
+        self.A_ineq_shared= A_shared
+        self.b_ineq_shared = b_shared
+        self.n_shared_ineq_constr = self.A_ineq_shared.size(1)
+        # TODO: check if norm(Q_ij) = 0 if i,j are not connected
 
-if __name__ == '__main__':
-    # Get random seed as system argument
-    if len(sys.argv) < 2:
-        seed = 0
-        job_id=0
-    else:
-        seed=int(sys.argv[1])
-        job_id = int(sys.argv[2])
-    random.seed(seed)
+        # Define the (nonlinear) game mapping as a torch custom activation function
+        self.F = self.GameMapping(Q, c)
+        self.J = self.GameCost(Q, c)
+        # Define the consensus operator
+        self.K = self.Consensus(communication_graph, self.n_shared_ineq_constr)
+        # Define the selection function gradient (can be zero)
+        self.nabla_phi = self.SelFunGrad(Q_sel, c_sel)
+        self.phi = self.SelFun(Q_sel, c_sel)
 
-    logging.basicConfig(filename='log.txt', filemode='w',level=logging.DEBUG)
-    use_test_graph = True
-    N_random_initial_states = 10
-    N_agents=random.choice(range(2,8,2))  # N agents
+    class GameCost(torch.nn.Module):
+        def __init__(self, Q, c):
+            super().__init__()
+            self.Q = Q
+            self.c = c
 
-    n_states = random.choice(range(2,6))
-    n_inputs = int(n_states) / 2
+        def forward(self, x):
+            C = torch.matmul(self.Q, x) # C is a block matrix where C[i,j,:,:] = Q[i,j,:,:] x[j]
+            cost = torch.bmm(x.transpose(1,2), torch.sum(C, 1) + self.c)
+            return cost
 
-    # Generate random system
-    is_controllable = False
-    n_inputs = int(np.floor(n_states/2))
-    attempt_controllable = 0
-    while not is_controllable and attempt_controllable < 10:
-        A_single_agent = torch.tensor(-0.5 + 3 * np.random.random_sample(size=[n_states, n_states]))
-        B_single_agent = torch.tensor(-0.5 + 3 * np.random.random_sample(size=[n_states, n_inputs]))
-        A = torch.broadcast_to(A_single_agent, (N_agents, n_states, n_states))  # Double integrators
-        B = torch.broadcast_to(B_single_agent, (N_agents, n_states, n_inputs))
-        is_controllable = np.linalg.matrix_rank(control.ctrb(A_single_agent, B_single_agent)) == n_states
-        attempt_controllable = attempt_controllable + 1
-        if attempt_controllable % 10 == 0:
-            n_inputs = n_inputs + 1
-            print("The system was not controllable after " + str(attempt_controllable) + " attempts with  " + str(
-                n_states) + " states"+ str(
-                n_inputs) + " inputs")
-            logging.info("The system was not controllable after " + str(attempt_controllable) + " attempts with  " + str(
-                n_states) + " states"+ str(
-                n_inputs) + " inputs")
+    class GameMapping(torch.nn.Module):
+        def __init__(self, Q, c, test=False):
+            super().__init__()
+            self.Q = Q
+            self.c = c
+            self.test=test
 
-    #stepsizes
-    # alpha = 0.001
-    # beta = 0.001
-    # theta = 0.0
+        def forward(self, x):
+            C = torch.matmul(self.Q, x) # C is a block matrix where C[i,j,:,:] = Q[i,j,:,:] x[j]
+            pgrad = torch.sum(C, 1) + self.c
+            return pgrad
 
-    # cost weights
-    weight_x = np.random.random_sample()
-    weight_u = np.random.random_sample()
-    weight_terminal_cost = 0
+        def get_strMon_Lip_constants(self):
+            # Return strong monotonicity and Lipschitz constant
+            # Convert Q from block matrix to standard matrix #TODO: turn block matrix into separate class
+            N = self.Q.size(0)
+            n_x = self.Q.size(2)
+            Q_mat = torch.zeros(N*n_x, N*n_x)
+            for i in range(N):
+                for j in range(N):
+                    Q_mat[i*n_x:(i+1)*n_x, j*n_x:(j+1)*n_x] = self.Q[i,j,:,:]
+            U,S,V = torch.linalg.svd(Q_mat)
+            return torch.min(S).item(), torch.max(S).item()
 
-    T_horiz_to_test= [5,100] # This is actually T+1, so for T=1 insert 2
-    T_simulation=50
-    N_iter=10**5
-    # containers for saved variables
-    # print("Warning! the coupled cost is set to zero!")
-    x_store = {}
-    x_traj_store = {}
-    u_store = {}
-    u_traj_store = {}
-    cost_store = {}
-    competition_evolution = {}
-    has_converged = {}
-    solver_problem = {}
-    for test in range(N_random_initial_states):
-        # Initial state
-        initial_state_test = torch.tensor(-0.5 + 2*np.random.random_sample(size=[N_agents, n_states]))
-        print("Initializing game for test " + str(test) + " out of " + str(N_random_initial_states))
-        logging.info("Initializing game for test " + str(test) + " out of " + str(N_random_initial_states))
-        ### Begin tests
-        for T_horiz in T_horiz_to_test:
-            initial_state = initial_state_test # bring system back to initial state anytime we test another horizon
-            for t in range(T_simulation):
-                print("Initializing game for timestep " + str(t+1) + " out of " + str(T_simulation))
-                logging.info("Initializing game for timestep " + str(t+1) + " out of " + str(T_simulation))
-                game = Game(T_horiz, A, B, weight_x, weight_u, initial_state, add_terminal_cost=True,
-                            add_destination_constraint=False, xi=1, problem_type="pairwise_quadratic", weight_terminal_cost=weight_terminal_cost)
-                if t==0:
-                    print("The game has " + str(N_agents) + " agents; " + str(
-                        game.n_opt_variables) + " opt. variables per agent; " \
-                          + str(game.A_ineq_loc.size()[1]) + " Local ineq. constraints; " + str(
-                        game.A_eq_loc.size()[1]) + " local eq. constraints; " + str(
-                        game.n_shared_ineq_constr) + " shared ineq. constraints")
-                    logging.info("The game has " + str(N_agents) + " agents; " + str(
-                        game.n_opt_variables) + " opt. variables per agent; " \
-                                 + str(game.A_ineq_loc.size()[1]) + " Local ineq. constraints; " + str(
-                        game.A_eq_loc.size()[1]) + " local eq. constraints; " + str(
-                        game.n_shared_ineq_constr) + " shared ineq. constraints")
-                    # Initialize storing
-                    x_store.update({(test, T_horiz) : torch.zeros(N_agents, n_states, T_simulation)})
-                    x_traj_store.update({(test, T_horiz): torch.zeros(N_agents, n_states*T_horiz, T_simulation)})
-                    u_store.update({(test, T_horiz): torch.zeros(N_agents, n_inputs, T_simulation)})
-                    u_traj_store.update({(test, T_horiz): torch.zeros(N_agents, n_inputs * T_horiz, T_simulation)})
-                    cost_store.update({(test, T_horiz): torch.zeros(N_agents, 1, T_simulation)})
-                    competition_evolution.update({(test, T_horiz): torch.zeros(N_agents, 1, T_simulation)})
-                    has_converged.update({(test, T_horiz): False})
-                    solver_problem.update({(test,T_horiz): False})
-                print("Done")
-                x_store[(test, T_horiz)][:, :, t] = initial_state
-                Lipschitz_const = N_agents*((weight_u + weight_x) + weight_terminal_cost)
-                alpha, beta, theta = set_stepsizes(N_agents, game.A_ineq_shared, Lipschitz_const, algorithm='FBF')
-                alg = FBF_algorithm(game, rho = alpha, tau = beta)
-                status = alg.check_feasibility()
-                ### Check feasibility
-                is_problem_feasible = (status == 'solved')
-                if not is_problem_feasible:
-                    print("the problem is not feasible")
-                index_store = 0
-                avg_time_per_it = 0
-                ### Main iterations
-                for k in range(N_iter):
-                    start_time = time.time()
-                    status = alg.run_once()
-                    if status != 'solved':
-                        solver_problem[(test,T_horiz)] = True
-                        break
-                    end_time = time.time()
-                    avg_time_per_it = (avg_time_per_it * k + (end_time - start_time)) / (k + 1)
-                    if k % 100 == 0:
-                        x, d, r, c = alg.get_state()
-                        print("Iteration " + str(k) + " Residual: " + str(r.item()) + " Average time: " + str(
-                            avg_time_per_it))
-                        logging.info("Iteration " + str(k) + " Residual: " + str(r.item()) + " Average time: " + str(
-                            avg_time_per_it))
-                        index_store = index_store + 1
-                        if r <= 10 ** (-4):
-                            break
-                # store results
-                x, d, r, c = alg.get_state()
-                # NI_value = game.compute_Nikaido_Isoada(x)
-                # print("NI value: " + str(NI_value.item()))
-                initial_state = game.get_next_state_from_opt_var(x).squeeze(dim=2)
-                input_gne = game.get_next_control_action_from_opt_var(x).squeeze(dim=2)
-                u_store[(test, T_horiz)][:, :, t] = input_gne
-                x_traj_store[(test, T_horiz)][:,:,t] = game.get_all_states_from_opt_var(x).squeeze(dim=2)
-                u_traj_store[(test, T_horiz)][:, :, t] = game.get_all_control_actions_from_opt_var(x).squeeze(dim=2)
-                cost_store[(test, T_horiz)][:, :, t]  = c.squeeze(dim=2)
-                if t>0:
-                    competition_evolution[(test, T_horiz)][:, :, t] = game.compute_competition_variation(x, last_gne)
-                if torch.norm(initial_state).item() < 10**(-2):
-                    has_converged[(test, T_horiz)] = True
-                    break
-                if torch.norm(initial_state).item() > 10 ** (2):
-                    #Assume it has diverged
-                    break
-                last_gne = x
+    class Consensus(torch.nn.Module):
+        def __init__(self, communication_graph, N_dual_variables):
+            super().__init__()
+            # Convert Laplacian matrix to sparse tensor
+            L = networkx.laplacian_matrix(communication_graph).tocoo()
+            values = L.data
+            rows = L.row
+            cols = L.col
+            indices = np.vstack((rows, cols))
+            L = L.tocsr()
+            i = torch.LongTensor(indices)
+            v = torch.FloatTensor(values)
+            L_torch = torch.zeros(L.shape[0],L.shape[1], N_dual_variables, N_dual_variables)
+            for i in rows:
+                for j in cols:
+                    L_torch[i,j,:,:] = L[i,j] * torch.eye(N_dual_variables)
+            # TODO: understand why sparse does not work
+            # self.L = L_torch.to_sparse_coo()
+            self.L = L_torch
+
+        def forward(self, dual):
+            return torch.sum(torch.matmul(self.L, dual), dim=1) # This applies the laplacian matrix to each of the dual variables
 
 
-    print("Saving results...")
-    logging.info("Saving results...")
-    filename = "saved_test_result_multiperiod_" + str(job_id) + ".pkl"
-    f = open(filename, 'wb')
-    pickle.dump([x_store, u_store, N_agents, N_random_initial_states,
-                 T_simulation, T_horiz_to_test, x_traj_store, u_traj_store,
-                 cost_store, competition_evolution, has_converged, solver_problem], f)
-    f.close()
-    print("Saved")
-    logging.info("Saved, job done")
+
+    class SelFunGrad(torch.nn.Module):
+        def __init__(self, Q_sel, c_sel):
+            super().__init__()
+            if Q_sel is not None and c_sel is not None:
+                self.Q = Q_sel
+                self.c = c_sel
+                self.weight_dual = 10**(-3)
+                self.is_active = True
+            else:
+                self.is_active = False
+
+        def forward(self, x, dual, aux):
+            if self.is_active:
+                return torch.sum(torch.matmul(self.Q, x),dim=1) + self.c, -self.weight_dual * dual, -self.weight_dual * aux
+            else:
+                return 0*x
+
+    class SelFun(torch.nn.Module):
+        def __init__(self, Q_sel, c_sel):
+            super().__init__()
+            if Q_sel is not None and c_sel is not None:
+                self.Q = Q_sel
+                self.c = c_sel
+                self.weight_dual = 10**(-3)
+                self.is_active = True
+            else:
+                self.is_active = False
+
+        def forward(self, x, dual, aux):
+            # Cost is .5*x'Qx + c'x,  where Q is a block-diagonal matrix stored in a tensor N*N*n*n. The i,j-th block is in Q[i,j,:,:].
+            if self.is_active:
+                return torch.sum(torch.bmm(x.transpose(1,2), .5*torch.sum(torch.matmul(self.Q, x),dim=1) + self.c)) + \
+                       .5*self.weight_dual* torch.sum(torch.bmm(torch.transpose(dual, dim0=1, dim1=2), dual), dim=0) + \
+                       .5*self.weight_dual* torch.sum(torch.bmm(torch.transpose(aux, dim0=1, dim1=2), aux), dim=0)
+            else:
+                return torch.tensor(0)
+
+        def get_strMon_Lip_constants(self):
+            # Return strong monotonicity and Lipschitz constant
+            # Convert Q from block matrix to standard matrix #TODO: turn block matrix into separate class
+            N = self.Q.size(0)
+            n_x = self.Q.size(2)
+            Q_mat = torch.zeros(N*n_x, N*n_x)
+            for i in range(N):
+                for j in range(N):
+                    Q_mat[i*n_x:(i+1)*n_x, j*n_x:(j+1)*n_x] = self.Q[i,j,:,:]
+            U,S,V = torch.linalg.svd(Q_mat)
+            return torch.min(S).item(), torch.max(S).item()
+
+    def setToTestGameSetup(self):
+        # Feasible points on x_1=x_2, South-West quadrant. Optimal point in -c_sel (that is, [-.5, -.5])
+        Q = torch.zeros((2, 2, 1, 1))
+        Q[0, 1, 0, 0] = -1
+        Q[1, 0, 0, 0] = 1
+        c = torch.zeros((2, 1, 1))
+        Q_sel = torch.zeros((2, 2, 1, 1))
+        Q_sel[0, 0, 0, 0] = 1
+        Q_sel[1, 1, 0, 0] = 1
+        c_sel = torch.zeros((2, 1, 1))
+        c_sel[0, 0] = 0.5
+        c_sel[1, 0] = 0.5
+        A_shared = torch.zeros((2, 1, 1))
+        A_shared[0, 0, 0] = -1
+        A_shared[1, 0, 0] = 1
+        b_shared = torch.zeros(2,1,1)
+        A_eq_loc = torch.zeros(2,1,1)
+        A_ineq_loc = torch.zeros(2,1,1)
+        b_eq_loc = torch.zeros(2,1,1)
+        b_ineq_loc = torch.zeros(2, 1, 1)
+        n_opt_var = 1
+        N=2
+        communication_graph = nx.complete_graph(2)
+        return N,n_opt_var,Q,c,Q_sel,c_sel,A_shared,b_shared, A_eq_loc, A_ineq_loc, b_eq_loc, b_ineq_loc, communication_graph
+
+
+    # def computeOptimalSelection(self): #Finds a STRICTLY FEASIBLE optimal GNE selection
+    #     # Compute exact optimal selection via a QP
+    #     n_local_ineq_constr = self.A_ineq_loc.size(1)
+    #     n_local_eq_constr = self.A_eq_loc.size(1)
+    #     N = self.N_agents
+    #     n_x = self.F.Q.size(2)
+    #     A_ineq_all = torch.zeros(
+    #         (1, N * n_local_ineq_constr + self.n_shared_ineq_constr, N * self.n_opt_variables))
+    #     b_ineq_all = torch.zeros((1, N * n_local_ineq_constr + self.n_shared_ineq_constr, 1))
+    #     A_eq_all = torch.zeros(
+    #         (1, N * n_local_eq_constr + self.n_shared_ineq_constr, N * self.n_opt_variables))
+    #     b_eq_all = torch.zeros((1, N * n_local_eq_constr + self.n_shared_ineq_constr, 1))
+    #     for i in range(N):
+    #         A_ineq_all[0,i * n_local_ineq_constr:(i + 1) * n_local_ineq_constr,
+    #             i * self.n_opt_variables:(i + 1) * self.n_opt_variables] = self.A_ineq_loc[i, :, :]
+    #         b_ineq_all[0,i * n_local_ineq_constr:(i + 1) * n_local_ineq_constr, :] = self.b_ineq_loc[i, :, :]
+    #         A_eq_all[0,i * n_local_eq_constr:(i + 1) * n_local_eq_constr,
+    #             i * self.n_opt_variables:(i + 1) * self.n_opt_variables] = self.A_eq_loc[i, :, :]
+    #         b_eq_all[0,i * n_local_eq_constr:(i + 1) * n_local_eq_constr, :] = self.b_eq_loc[i, :, :]
+    #         A_ineq_all[0,-self.n_shared_ineq_constr:,
+    #             i * self.n_opt_variables:(i + 1) * self.n_opt_variables] = self.A_ineq_shared[i, :, :]
+    #         b_ineq_all[0,-self.n_shared_ineq_constr:, :] = b_ineq_all[0,-self.n_shared_ineq_constr:,
+    #                                                           :] + self.b_ineq_shared[i, :, :]
+    #
+    #     A_optimality = torch.zeros(1, N * n_x, N * n_x)
+    #     b_optimality = torch.zeros(1, N * n_x, 1)
+    #     Q_sel = torch.zeros(1, N * n_x, N * n_x)
+    #     c_sel = torch.zeros(1, N * n_x, 1)
+    #
+    #     for i in range(N):
+    #         for j in range(N):
+    #             A_optimality[0, i * n_x:(i + 1) * n_x, j * n_x:(j + 1) * n_x] = self.F.Q[i, j, :, :]
+    #             Q_sel[0, i * n_x:(i + 1) * n_x, j * n_x:(j + 1) * n_x] = self.phi.Q[i, j, :, :]
+    #         b_optimality[0, i * n_x:(i + 1) * n_x] = self.F.c[i,:,:]
+    #         c_sel[0, i * n_x:(i + 1) * n_x] = self.phi.c[i,:,:]
+    #
+    #     A_eq_with_optimality = torch.cat((A_eq_all, A_optimality), dim=1)
+    #     b_eq_with_optimality = torch.cat((b_eq_all, b_optimality), dim=1)
+    #     solver = backwardStep.BackwardStep(Q_sel, c_sel, A_ineq_all, b_ineq_all, A_eq_with_optimality, b_eq_with_optimality, alpha=0)
+    #     x_opt, status = solver(torch.zeros(1,N*n_x,1))
+    #     x_opt_reshape = torch.zeros(N, n_x,1)
+    #     for i in range(N):
+    #         x_opt_reshape[i,:,:] = x_opt[0,i * n_x:(i + 1) * n_x,:]
+    #     phi_opt = self.phi(x_opt_reshape)
+    #     return x_opt_reshape, phi_opt

@@ -1,21 +1,12 @@
 import numpy as np
 import torch
 import pickle
-from FBF_algorithm_NON_aggregative import FBF_algorithm
-from GameDefinition import Game
 import time
 import logging
 import random
-# import matplotlib
 import control
 control.use_numpy_matrix(flag=True, warn=True)
 import sys
-
-import matplotlib.pyplot as plt
-from operator import itemgetter
-#
-# torch.Tensor.ndim = property(lambda self: len(self.shape))  # Necessary to use matplotlib with tensors
-# matplotlib.use('TkAgg')
 
 def set_stepsizes(N, A_ineq_shared, L, algorithm='FBF'):
     theta = 0
@@ -46,29 +37,33 @@ if __name__ == '__main__':
     logging.basicConfig(filename='log.txt', filemode='w',level=logging.DEBUG)
     use_test_graph = True
     N_random_initial_states = 1
-    N_agents= 2 # random.choice(range(2,8,2))  # N agents
+    N_agents= 5 # random.choice(range(2,8,2))  # N agents
 
-    n_states = 1 # random.choice(range(2,6))
+    n_states = 4 # random.choice(range(2,6))
 
     # Generate random system
     is_controllable = False
-    n_inputs = 1 # int(n_states) / 2
+    n_inputs = 2 # int(n_states) / 2
     attempt_controllable = 0
-    while not is_controllable and attempt_controllable < 10:
-        A_single_agent = torch.tensor(1.)#-0.5 + 3 * np.random.random_sample(size=[n_states, n_states]))
-        B_single_agent = torch.tensor(1.) #-0.5 + 3 * np.random.random_sample(size=[n_states, n_inputs]))
-        A = torch.broadcast_to(A_single_agent, (N_agents, n_states, n_states))  # Double integrators
-        B = torch.broadcast_to(B_single_agent, (N_agents, n_states, n_inputs))
-        is_controllable = np.linalg.matrix_rank(control.ctrb(A_single_agent, B_single_agent)) == n_states
-        attempt_controllable = attempt_controllable + 1
-        if attempt_controllable % 10 == 0:
-            n_inputs = n_inputs + 1
-            print("The system was not controllable after " + str(attempt_controllable) + " attempts with  " + str(
-                n_states) + " states"+ str(
-                n_inputs) + " inputs")
-            logging.info("The system was not controllable after " + str(attempt_controllable) + " attempts with  " + str(
-                n_states) + " states"+ str(
-                n_inputs) + " inputs")
+
+    A = torch.zeros(N_agents, n_states, n_states)
+    B = torch.zeros(N_agents, n_states, n_inputs)
+    for i in range(N_agents):
+        while not is_controllable and attempt_controllable < 10:
+            A_single_agent = -0.5 + 1 * np.random.random_sample(size=[n_states, n_states])
+            B_single_agent = -0.5 + 1 * np.random.random_sample(size=[n_states, n_inputs])
+            A[i,:,:]= A_single_agent
+            B[i,:,:]= B_single_agent
+            is_controllable = np.linalg.matrix_rank(control.ctrb(A_single_agent, B_single_agent)) == n_states
+            attempt_controllable = attempt_controllable + 1
+            if attempt_controllable % 10 == 0:
+                n_inputs = n_inputs + 1
+                print("The system was not controllable after " + str(attempt_controllable) + " attempts with  " + str(
+                    n_states) + " states"+ str(
+                    n_inputs) + " inputs")
+                logging.info("The system was not controllable after " + str(attempt_controllable) + " attempts with  " + str(
+                    n_states) + " states"+ str(
+                    n_inputs) + " inputs")
 
     #stepsizes
     # alpha = 0.001
@@ -80,9 +75,9 @@ if __name__ == '__main__':
     weight_u = 1 # np.random.random_sample()
     weight_terminal_cost = 0
 
-    T_horiz_to_test= [20] # This is actually T+1, so for T=1 insert 2
+    T_horiz_to_test= [2] # This is actually T+1, so for T=1 insert 2
     T_simulation=10
-    N_iter=10**5
+    N_iter=10**4
     # containers for saved variables
     # print("Warning! the coupled cost is set to zero!")
     x_store = {}

@@ -8,3 +8,4 @@ __pycache__/GameDefinition.cpython-310.pyc
 *.ggb
 *.pkl
 log.txt
+*.txt
