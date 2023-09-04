@@ -1,18 +1,12 @@
 import warnings
-
 import numpy as np
 # import torch
 import pickle
 import games.dyngames as dyngames
 from algorithms.GNE_centralized import pFB_algorithm
-import matplotlib.pyplot as plt
-import time
 import logging
 import sys
-from scipy.linalg import norm
-import copy
-import math
-from games.staticgames import batch_mult_with_coulumn_stack
+
 
 if __name__ == '__main__':
     logging.basicConfig(filename='log.txt', filemode='w',level=logging.DEBUG)
@@ -33,7 +27,7 @@ if __name__ == '__main__':
     N_iter = 100000
     n_x = 6
     n_u = 3
-    T_hor_to_test = [2, 3, 6, 9, 12]
+    T_hor_to_test = [2, 3, 6, 9]
     T_sim = 10
     eps = 10**(-5) # convergence threshold
 
@@ -42,6 +36,8 @@ if __name__ == '__main__':
     ##########################################
     x_store = [ [ np.zeros((N_random_tests, n_x, T_sim)) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
     u_store = [ [ np.zeros((N_random_tests, N_agents, n_u, T_sim)) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
+    u_PMP_CL_store = [[np.zeros((N_random_tests, N_agents, n_u, T_sim)) for N_agents in N_agents_to_test] for _ in T_hor_to_test]
+    u_PMP_OL_store = [[np.zeros((N_random_tests, N_agents, n_u, T_sim)) for N_agents in N_agents_to_test] for _ in T_hor_to_test]
     u_pred_traj_store = [ [ np.zeros((N_random_tests, N_agents, T_hor * n_u, T_sim)) for N_agents in N_agents_to_test ] for T_hor in T_hor_to_test ]
     x_pred_traj_store = [ [ np.zeros((N_random_tests, T_hor * n_x, T_sim)) for N_agents in N_agents_to_test ] for T_hor in T_hor_to_test ]
     u_shifted_traj_store = [ [ np.zeros((N_random_tests, N_agents, T_hor * n_u, T_sim)) for N_agents in N_agents_to_test ] for T_hor in T_hor_to_test ]
@@ -79,8 +75,8 @@ if __name__ == '__main__':
                 # dyn_game.set_term_cost_to_inf_hor_sol(mode="CL", method='lyap')
                 x_0 = np.ones((n_x, 1))
                 x_last = np.zeros((n_x, 1)) #stores last state of the sequence
-                _, K_CL = dyn_game.solve_closed_loop_inf_hor_problem()
-                _, K_OL = dyn_game.solve_open_loop_inf_hor_problem()
+                P_CL, K_CL = dyn_game.solve_closed_loop_inf_hor_problem()
+                P_OL, K_OL = dyn_game.solve_open_loop_inf_hor_problem()
                 K_CL_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)] [test, :] = K_CL
                 K_OL_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :] = K_OL
                 A_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)] [test, :] = A
@@ -143,6 +139,13 @@ if __name__ == '__main__':
                     x_pred_traj_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :, t] = (dyn_game.T @ x_0 + np.sum(dyn_game.S @ u_all, axis=0)).squeeze()
                     u_shifted_traj_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :, :, t] = dyn_game.get_shifted_trajectory_from_opt_var(u_all, x_0).squeeze(2)
 
+                    # Compute solution with PMP
+                    u_PMP_CL, x_PMP_CL, _ = dyn_game.solve_CL_with_PMP(P_CL,
+                                                np.linalg.matrix_power(A + np.sum(B @ K_CL, axis=0), T_hor) @ x_0, K_CL)
+                    u_PMP_OL, x_PMP_OL, _ = dyn_game.solve_OL_with_PMP(P_OL,
+                                                np.linalg.matrix_power(A + np.sum(B @ K_OL, axis=0), T_hor) @ x_0)
+                    u_PMP_CL_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :, :, t] = u_PMP_CL[0].squeeze(2)
+                    u_PMP_OL_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :, :, t] = u_PMP_OL[0].squeeze(2)
                     # Just for testing, check is u_0 = K x_0
                     # if norm(u_0 - dyn_game.K @ x_0) > eps:
                     #     warnings.warn("The inf. hor. controller is not the same as the MPC input ")

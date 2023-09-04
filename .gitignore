@@ -9,3 +9,4 @@ __pycache__/GameDefinition.cpython-310.pyc
 *.pkl
 log.txt
 *.txt
+*.iml
