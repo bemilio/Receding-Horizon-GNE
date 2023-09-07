@@ -20,16 +20,16 @@ if __name__ == '__main__':
     logging.info("Random seed set to  " + str(seed))
     np.random.seed(seed)
     N_it_per_residual_computation = 10
-    N_agents_to_test = [2]
+    N_agents_to_test = [3]
     N_random_tests = 1
 
     # parameters
-    N_iter = 100000
+    N_iter = 10**6
     n_x = 6
     n_u = 3
-    T_hor_to_test = [2, 3, 6, 9]
+    T_hor_to_test = [2, 3, 6, 9,12]
     T_sim = 10
-    eps = 10**(-5) # convergence threshold
+    eps = 10**(-6) # convergence threshold
 
     ##########################################
     #   Variables storage inizialization     #
@@ -45,6 +45,7 @@ if __name__ == '__main__':
     cost_store = [[np.zeros((N_random_tests, N_agents, T_sim)) for N_agents in N_agents_to_test] for _ in T_hor_to_test]
     K_CL_store = [ [ np.zeros((N_random_tests, N_agents, n_u, n_x)) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
     K_OL_store = [ [ np.zeros((N_random_tests, N_agents, n_u, n_x)) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
+    P_OL_store = [[np.zeros((N_random_tests, N_agents, n_x, n_x)) for N_agents in N_agents_to_test] for _ in T_hor_to_test]
     A_store = [ [ np.zeros((N_random_tests, n_x, n_x)) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
     B_store = [ [ np.zeros((N_random_tests, N_agents, n_x, n_u)) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
     status_store = [[ [ 'not run' for _ in range(N_random_tests)] for _ in N_agents_to_test] for _ in T_hor_to_test]
@@ -79,6 +80,7 @@ if __name__ == '__main__':
                 P_OL, K_OL = dyn_game.solve_open_loop_inf_hor_problem()
                 K_CL_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)] [test, :] = K_CL
                 K_OL_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :] = K_OL
+                P_OL_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :] = P_OL
                 A_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)] [test, :] = A
                 B_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)] [test, :] = B
                 for t in range(T_sim):
@@ -98,7 +100,7 @@ if __name__ == '__main__':
                     #######################################
                     # alg. initialization
                     if t==0:
-                        alg = pFB_algorithm(game_t, primal_stepsize=0.001, dual_stepsize=0.001, x_0=None, dual_0=None)
+                        alg = pFB_algorithm(game_t, primal_stepsize=0.0001, dual_stepsize=0.0001, x_0=None, dual_0=None)
                     else:
                         # warm start to shifted sequence
                         u_shifted = np.expand_dims(u_shifted_traj_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :, :, t-1], axis=2)
@@ -144,8 +146,8 @@ if __name__ == '__main__':
                                                 np.linalg.matrix_power(A + np.sum(B @ K_CL, axis=0), T_hor) @ x_0, K_CL)
                     u_PMP_OL, x_PMP_OL, _ = dyn_game.solve_OL_with_PMP(P_OL,
                                                 np.linalg.matrix_power(A + np.sum(B @ K_OL, axis=0), T_hor) @ x_0)
-                    u_PMP_CL_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :, :, t] = u_PMP_CL[0].squeeze(2)
-                    u_PMP_OL_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :, :, t] = u_PMP_OL[0].squeeze(2)
+                    u_PMP_CL_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :, :, t] = u_PMP_CL[:,0,:].squeeze()
+                    u_PMP_OL_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :, :, t] = u_PMP_OL[:,0,:].squeeze()
                     # Just for testing, check is u_0 = K x_0
                     # if norm(u_0 - dyn_game.K @ x_0) > eps:
                     #     warnings.warn("The inf. hor. controller is not the same as the MPC input ")
@@ -174,7 +176,8 @@ if __name__ == '__main__':
     f = open('rec_hor_consistency_result_'+ str(job_id) + ".pkl", 'wb')
     pickle.dump([ x_store, u_store, residual_store, u_pred_traj_store, x_pred_traj_store, u_shifted_traj_store,\
                   K_CL_store, K_OL_store, A_store, B_store,\
-                  T_hor_to_test, N_agents_to_test, status_store, cost_store], f)
+                  T_hor_to_test, N_agents_to_test, status_store,
+                  cost_store, u_PMP_CL_store, u_PMP_OL_store, P_OL_store], f)
     f.close()
     print("Saved")
     logging.info("Saved, job done")
