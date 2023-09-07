@@ -6,7 +6,7 @@ from . import staticgames
 from .staticgames import batch_mult_with_coulumn_stack, multiagent_array
 import control
 from copy import copy
-
+from operators.solve_qp import  solve_qp
 
 def get_multiagent_prediction_model(A, B, T_hor):
     # Generate prediction model with the convention x = col_i(col_t(x_t^i))
@@ -432,6 +432,66 @@ class LQ:
             print("[solve_closed_loop_inf_hor_problem] Could not find solution")
         # Compute optimal controllers
         return P, K
+
+    def solve_OL_with_PMP(self, P_T, x_T):
+        '''
+        Backward solution for the OL-NE using the Pontryagin minimum principle (PMP).
+        It requires a terminal state and cost matrix, which determines the terminal costate as
+        \psi_T = P_T @ x_T
+        returns the sequence of inputs, states and costates.
+        '''
+        u = np.zeros((self.N_agents, self.T_hor, self.n_u, 1))
+        x = np.zeros((self.T_hor + 1, self.n_x, 1))
+        psi = np.zeros((self.N_agents, self.T_hor + 1, self.n_x, 1))
+        psi[:, -1, :, :] = (P_T @ x_T)
+        x[-1, :, :] = x_T
+        T = self.T_hor
+        for t in range(T):
+            for i in range(self.N_agents):
+                '''
+                u_i(t-1) = argmin u_i'R_i u_i + \phi(t)' B_i u_i
+                '''
+                u[i][T - t - 1], _ = solve_qp(self.R[i], psi[i][T - t].T @ self.B[i],
+                                              A=np.zeros((self.n_u, self.n_u)), l=-np.ones((self.n_u, 1)),
+                                              u=np.ones((self.n_u, 1)))
+            '''
+            psi(t-1) = Q_i x(t-1) + A' psi(t) 
+            '''
+            x[T - t - 1] = np.linalg.inv(self.A) @ (x[T - t] - np.sum(self.B @ u[:, T - t - 1, :], axis=0))
+            for i in range(self.N_agents):
+                psi[i][T - t - 1] = self.A.T @ psi[i][T - t] + self.Q[i] @ x[T - t - 1]
+        return u, x, psi
+
+    def solve_CL_with_PMP(self, P_T, x_T, K):
+        '''
+        Backward solution for the CL-NE using the Pontryagin minimum principle (PMP).
+        It requires a terminal state and cost matrix, which determines the terminal costate as
+        \psi_T = P_T @ x_T
+        It also requires K, which contains the assumed linear controllers for each agent. This is necessary to compute
+        the gradients with respect to u_{-i} of the hamiltonian for each agent,
+        which are in turn necessary to propagate the costate.
+        It returns the sequence of inputs, states and costates.
+        '''
+        u = np.zeros((self.N_agents, self.T_hor, self.n_u, 1))
+        x = np.zeros((self.T_hor+1, self.n_x, 1))
+        psi = np.zeros((self.N_agents, self.T_hor+1, self.n_x, 1))
+        psi[:,-1,:,:] = (P_T @ x_T)
+        x[-1, :,:] = x_T
+        T = self.T_hor
+        for t in range(T):
+            for i in range(self.N_agents):
+                '''
+                u_i(t-1) = argmin u_i'R_i u_i + \phi(t)' B_i u_i
+                '''
+                u[i][T-t-1], _ = solve_qp(self.R[i], psi[i][T-t].T @ self.B[i],
+                                    A=np.zeros((self.n_u, self.n_u)), l=-np.ones((self.n_u,1)), u=np.ones((self.n_u,1)))
+            '''
+            psi(t-1) = Q_i x(t-1) + A' psi(t) 
+            '''
+            x[T-t-1] = np.linalg.inv(self.A) @ (x[T-t] - np.sum(self.B @ u[:,T-t-1,:], axis=0))
+            for i in range(self.N_agents):
+                psi[i][T-t-1] = (self.A + np.sum(self.B @ K, axis=0) - self.B[i] @ K[i] ).T @ psi[i][T-t] + self.Q[i] @ x[T-t-1]
+        return u, x, psi
 
     def set_term_cost_to_inf_hor_sol(self, mode="CL", method='lyap', n_iter=10000, eps_error=10**(-6)):
         if mode=="OL":
