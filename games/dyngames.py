@@ -1,12 +1,14 @@
 import warnings
 
 import numpy as np
+import scipy.linalg
 from scipy.linalg import block_diag, norm, solve_discrete_are
 from . import staticgames
 from .staticgames import batch_mult_with_coulumn_stack, multiagent_array
 import control
 from copy import copy
 from operators.solve_qp import  solve_qp
+from scipy import sparse
 
 def get_multiagent_prediction_model(A, B, T_hor):
     # Generate prediction model with the convention x = col_i(col_t(x_t^i))
@@ -31,7 +33,7 @@ def get_multiagent_prediction_model(A, B, T_hor):
     return S_i, T
 
 
-def generate_random_monotone_matrix(N, n_x, str_mon=1):
+def generate_random_monotone_matrix(N, n_x, str_mon=1.):
     # Produce a random square block matrix Q of dimension N*n_x where each block is n_x*n_x. The blocks on the diagonal are
     # symmetric positive definite and Q is positive definite, not symmetric.
     Q = np.random.random_sample(size=[N * n_x, N * n_x])
@@ -303,9 +305,9 @@ class LQ:
         K[:] = K_init[:]
         for i in range(N):
             if min(np.linalg.eigvalsh(P_init[i])) < 0:
-                warnings.warn("The closed loop P is non-positive definite")
+                warnings.warn("[solve_open_loop_inf_hor_problem] The closed loop P is non-positive definite")
         if max(np.abs(np.linalg.eigvals(A + np.sum(B @ K_init, axis=0)))) > 1.001:
-            warnings.warn("The infinite horizon CL-GNE has an unstable dynamics")
+            warnings.warn("[solve_open_loop_inf_hor_problem] The infinite horizon CL-GNE has an unstable dynamics")
         # P_init = solve_discrete_are(A, B_coop, np.eye(n_x), np.eye(N * n_u))
         # K_init = - np.linalg.inv(np.eye(N * n_u) + B_coop.T @ P_coop @ B_coop) @ (B_coop.T @ P_coop @ A)
         # for i in range(N):
@@ -337,13 +339,65 @@ class LQ:
                     break
         if err > eps_error:
             print("[solve_open_loop_inf_hor_problem] Could not find solution")
-        for i in range(N):
-            if min(np.linalg.eigvalsh(P[i])) < 0:
-                warnings.warn("The open loop P is non-positive definite")
-        if max(np.abs(np.linalg.eigvals(A + np.sum(B @ K, axis=0)))) > 1.001:
-            warnings.warn("The infinite horizon OL-GNE has an unstable dynamics")
-        return P, K
+            is_solved = False
+        else:
+            is_solved = True
+            for i in range(N):
+                if min(np.linalg.eigvalsh(P[i])) < 0:
+                    warnings.warn("[solve_open_loop_inf_hor_problem] The open loop P is non-positive definite")
+            if max(np.abs(np.linalg.eigvals(A + np.sum(B @ K, axis=0)))) > 1.001:
+                warnings.warn("The infinite horizon OL-GNE has an unstable dynamics")
+        return P, K, is_solved
 
+    def verify_ONE_is_affine_LQR(self, eps=10**(-5)):
+        '''
+        Verify that the infinite horizon O-NE is the LQR for the affine system where the other agent's inputs is
+        considered as a sequence of affine disturbances by checking eq. (4.5) of Monti 2023 for all i,
+        with w_i(k) = \sum_{j!=i} B_jK_j x(k)
+        b_i(k) = \sum_{h=k}^\inf (A_cl_i.T)^(h-k+1) P_i \sum_{j!=i} B_jK_j x(h)
+        A_cl_i = (I+S_iP_i)^(-1)A
+        we substitute then
+        x(h) = A_cl^(h-k) x(k)
+        with A_cl = (I+ \sum_j S_jP_j)^(-1)A
+        and remove x(h) from the relations, as they should hold for all x.
+        '''
+        P, K, is_solved = self.solve_open_loop_inf_hor_problem()
+        P_LQR = np.zeros((self.N_agents, self.n_x, self.n_x))
+        I_x = np.eye(self.n_x)
+        A_cl_i = np.zeros((self.N_agents, self.n_x, self.n_x))
+        for i in range(self.N_agents):
+            P_LQR[i] = scipy.linalg.solve_discrete_are(self.A, self.B[i], self.Q[i], self.R[i])
+            A_cl_i[i] = self.A.T @ (I_x - \
+                    self.B[i] @ np.linalg.inv(self.R[i] + self.B[i].T @ P_LQR[i] @ self.B[i]) @ self.B[i].T @ P_LQR[i]).T
+        S = self.B @ np.linalg.inv(self.R) @ self.B.T3D()
+        A_cl = self.A + np.sum(self.B @ K, axis=0)
+        K_affine = np.zeros((self.N_agents, self.n_u, self.n_x))
+        is_condition_verified = [False for _ in range(self.N_agents)]
+        b_next = np.zeros((self.N_agents, self.n_x, self.n_x))
+        b = np.zeros((self.N_agents, self.n_x, self.n_x))
+        c = np.zeros((self.N_agents, self.n_x, self.n_x))
+        if is_solved:
+            for i in range(self.N_agents):
+
+                for h in range(1000):
+                    w_h = (np.sum(self.B @ K, axis=0) - self.B[i] @ K[i]) @ np.linalg.matrix_power(A_cl, h)
+                    b[i] = b[i] + np.linalg.matrix_power(A_cl_i[i].T, h+1) @ P_LQR[i] @ w_h
+                    w_h_next = (np.sum(self.B @ K, axis=0) - self.B[i] @ K[i]) @ np.linalg.matrix_power(A_cl, h+1)
+                    b_next[i] = b_next[i] + np.linalg.matrix_power(A_cl_i[i].T, h + 1) @ P_LQR[i] @ w_h_next
+                # K_affine[i] = - np.linalg.inv(self.R[i]) @ self.B[i].T @ (P[i] @ (self.A + np.sum(self.B @ K, axis=0)) + G_i)
+                K_affine[i] = - np.linalg.inv(self.R[i] + self.B[i].T @ P_LQR[i] @ self.B[i]) @ \
+                            self.B[i].T @ (P_LQR[i] @ (self.A + np.sum(self.B @ K, axis=0) - self.B[i] @ K[i]) + b_next[i])
+                if np.linalg.norm(K_affine[i] - K[i]) < eps:
+                    is_condition_verified[i] = True
+                else:
+                    is_condition_verified[i] = False
+
+        '''Verify dynamic programming condition'''
+        # for i in range(self.N_agents):
+        #     V = (P_LQR[i] + P_LQR[i].T)/2 + b[i] + c[i]
+
+
+        return all(is_condition_verified)
 
     def solve_closed_loop_inf_hor_problem(self, n_iter=1000, eps_error=10 ** (-6), method='lyap'):
         """
@@ -389,10 +443,12 @@ class LQ:
                 '''
                 for i in range(N):
                     Q_bar = Q[i] + (B[i].T @ P[i] @ A_cl).T @ np.linalg.inv(R[i]) @ (B[i].T @ P[i] @ A_cl)
+                    Q_bar = (Q_bar + Q_bar.T) / 2 #sometimes it is detected as non-symmetric
                     try:
                         P[i] = control.dlyap(A_cl.T, Q_bar, method='slycot') # transpose due to the convention in control.dlyap
-                    except:
-                        print("[solve_closed_loop_inf_hor_problem] An error occurred while solving the Lyapunov equation")
+                    except Exception as e:
+                        print("[solve_closed_loop_inf_hor_problem] An error occurred while solving the Lyapunov equation:")
+                        print(str(e))
                 M = np.linalg.inv(np.eye(n_x) + np.sum(B @ np.linalg.inv(R) @ B.T3D() @ P, axis=0))
                 A_cl = M @ A
                 K = - np.linalg.inv(R) @ B.T3D() @ P @ A_cl   # Batch multiplication
@@ -495,7 +551,7 @@ class LQ:
 
     def set_term_cost_to_inf_hor_sol(self, mode="CL", method='lyap', n_iter=10000, eps_error=10**(-6)):
         if mode=="OL":
-            self.P, self.K = self.solve_open_loop_inf_hor_problem(n_iter=n_iter, eps_error=eps_error)
+            self.P, self.K, _ = self.solve_open_loop_inf_hor_problem(n_iter=n_iter, eps_error=eps_error)
         elif mode=="CL":
             self.P, self.K = self.solve_closed_loop_inf_hor_problem(n_iter=n_iter,  method=method, eps_error=eps_error)
         else:
@@ -506,7 +562,7 @@ class LQ:
     @staticmethod
     def generate_random_game(N_agents, n_states, n_inputs):
         # A sufficient condition for the game to be monotone is Q_i=I for all i
-        A = np.zeros((n_states, n_states))
+        A = np.diag(1.3*np.random.random_sample(size=[n_states-1]), k=1) + np.diag(2*np.random.random_sample(size=[n_states]))
         B = np.zeros((N_agents, n_states, n_inputs))
         Q = np.zeros((N_agents, n_states, n_states))
         R = np.zeros((N_agents, n_inputs, n_inputs))
@@ -514,18 +570,19 @@ class LQ:
         max_norm_eig = 0
         # limit maximum norm of eigenvalues so that the prediction model does not explode
         is_controllable = False
-        while (is_controllable == False and attempt_controllable < 10) or max_norm_eig > 1.2:
-            is_controllable = False
-            A = -1 + 2 * np.random.random_sample(size=[n_states, n_states])
-            B = -1 + 2 * np.random.random_sample(size=[N_agents, n_states, n_inputs])
-            max_norm_eig = max(np.linalg.norm(np.expand_dims(np.linalg.eigvals(A), 1), axis=1))
-            for j in range(N_agents):
-                is_controllable = is_controllable or (np.linalg.matrix_rank(control.ctrb(A, B[j])) == n_states)
+        while (is_controllable == False and attempt_controllable < 10):
+            is_controllable = True
+            for i in range(N_agents):
+                B[i] = sparse.random(n_states, n_inputs, density=0.5).todense()
+            # max_norm_eig = max(np.linalg.norm(np.expand_dims(np.linalg.eigvals(A), 1), axis=1))
+            for i in range(N_agents):
+                is_controllable = is_controllable and (np.linalg.matrix_rank(control.ctrb(A, B[i])) == n_states)
             attempt_controllable = attempt_controllable + 1
         if is_controllable==False:
             warnings.warn("System is not controllable")
         for i in range(N_agents):
-            Q[i, :, :] =  np.eye(n_states)
-            R[i, :, :] = generate_random_monotone_matrix(1, n_inputs, str_mon=1) #random pos. def. matrix
+            Q[i, :, :] = generate_random_monotone_matrix(1, n_states, str_mon=.1)
+            Q[i, :, :] = (Q[i, :, :] + Q[i, :, :].T) / 2
+            R[i, :, :] = generate_random_monotone_matrix(1, n_inputs, str_mon=.1) #random pos. def. matrix
             R[i, :, :] = (R[i, :, :] + R[i, :, :].T) / 2
         return A, B, Q, R

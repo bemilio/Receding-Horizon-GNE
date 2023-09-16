@@ -25,8 +25,8 @@ if __name__ == '__main__':
 
     # parameters
     N_iter = 10**6
-    n_x = 6
-    n_u = 3
+    n_x = 4
+    n_u = 2
     T_hor_to_test = [2, 3, 6, 9,12]
     T_sim = 10
     eps = 10**(-6) # convergence threshold
@@ -77,10 +77,11 @@ if __name__ == '__main__':
                 x_0 = np.ones((n_x, 1))
                 x_last = np.zeros((n_x, 1)) #stores last state of the sequence
                 P_CL, K_CL = dyn_game.solve_closed_loop_inf_hor_problem()
-                P_OL, K_OL = dyn_game.solve_open_loop_inf_hor_problem()
+                P_OL, K_OL, is_OL_solved = dyn_game.solve_open_loop_inf_hor_problem()
                 K_CL_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)] [test, :] = K_CL
                 K_OL_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :] = K_OL
                 P_OL_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :] = P_OL
+                dyn_game.verify_ONE_is_affine_LQR()
                 A_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)] [test, :] = A
                 B_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)] [test, :] = B
                 for t in range(T_sim):
