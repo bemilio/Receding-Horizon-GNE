@@ -277,7 +277,7 @@ class LQ:
         u_t = np.expand_dims(u[:, t, :], 2)
         return u_t
 
-    def solve_open_loop_inf_hor_problem(self, n_iter=1000, eps_error=10 ** (-6)):
+    def solve_open_loop_inf_hor_problem(self, n_iter=1000, eps_error=10 ** (-6), criterion="sassano"):
         """
         :param n_iter: maximum number of iterations
         :param eps_error:
@@ -330,13 +330,26 @@ class LQ:
             M = np.linalg.inv(np.eye(n_x) + np.sum(B @ np.linalg.inv(R) @ B.T3D() @ P, axis=0))
             K = - np.linalg.inv(R) @ B.T3D() @ P @ M @ A  # Batch multiplication
             if n_iter%10==0:
-                # Test solution: Check if (9) [Freiling-Jank-Kandil '99] is satisfied
+                # Test solution
                 err = 0
-                M = np.linalg.inv(np.eye(n_x) + np.sum(B @ np.linalg.inv(R) @ B.T3D() @ P, axis=0))
-                for i in range(N):
-                    err = err + norm(Q[i] - P[i] + A.T @ P[i] @ M @ A)
-                if  err < eps_error:
-                    break
+                if criterion=="freiling":
+                    # Check if (9) [Freiling-Jank-Kandil '99] is satisfied
+                    err = 0
+                    M = np.linalg.inv(np.eye(n_x) + np.sum(B @ np.linalg.inv(R) @ B.T3D() @ P, axis=0))
+                    for i in range(N):
+                        err = err + norm(Q[i] - P[i] + A.T @ P[i] @ M @ A)
+                    if  err < eps_error:
+                        break
+                # Test solution: Check if (4.27) [Monti '23] is satisfied
+                elif criterion=="sassano":
+                    A_Tinv = np.linalg.inv(A.T)
+                    S = B @ np.linalg.inv(R) @ B.T3D()
+                    for i in range(N):
+                        err = err + norm(A_Tinv @ (Q[i]-P[i]) + P[i] @ (A + np.sum(S @ A_Tinv @ (Q - P), axis = 0)))
+                    if  err < eps_error:
+                        break
+                else:
+                    raise ValueError("[solve_open_loop_inf_hor_problem] the criterion has to be 'sassano' or 'freiling' ")
         if err > eps_error:
             print("[solve_open_loop_inf_hor_problem] Could not find solution")
             is_solved = False
@@ -349,55 +362,97 @@ class LQ:
                 warnings.warn("The infinite horizon OL-GNE has an unstable dynamics")
         return P, K, is_solved
 
-    def verify_ONE_is_affine_LQR(self, eps=10**(-5)):
-        '''
-        Verify that the infinite horizon O-NE is the LQR for the affine system where the other agent's inputs is
-        considered as a sequence of affine disturbances by checking eq. (4.5) of Monti 2023 for all i,
-        with w_i(k) = \sum_{j!=i} B_jK_j x(k)
-        b_i(k) = \sum_{h=k}^\inf (A_cl_i.T)^(h-k+1) P_i \sum_{j!=i} B_jK_j x(h)
-        A_cl_i = (I+S_iP_i)^(-1)A
-        we substitute then
-        x(h) = A_cl^(h-k) x(k)
-        with A_cl = (I+ \sum_j S_jP_j)^(-1)A
-        and remove x(h) from the relations, as they should hold for all x.
-        '''
-        P, K, is_solved = self.solve_open_loop_inf_hor_problem()
-        P_LQR = np.zeros((self.N_agents, self.n_x, self.n_x))
-        I_x = np.eye(self.n_x)
-        A_cl_i = np.zeros((self.N_agents, self.n_x, self.n_x))
-        for i in range(self.N_agents):
-            P_LQR[i] = scipy.linalg.solve_discrete_are(self.A, self.B[i], self.Q[i], self.R[i])
-            A_cl_i[i] = self.A.T @ (I_x - \
-                    self.B[i] @ np.linalg.inv(self.R[i] + self.B[i].T @ P_LQR[i] @ self.B[i]) @ self.B[i].T @ P_LQR[i]).T
-        S = self.B @ np.linalg.inv(self.R) @ self.B.T3D()
-        A_cl = self.A + np.sum(self.B @ K, axis=0)
-        K_affine = np.zeros((self.N_agents, self.n_u, self.n_x))
-        is_condition_verified = [False for _ in range(self.N_agents)]
-        b_next = np.zeros((self.N_agents, self.n_x, self.n_x))
-        b = np.zeros((self.N_agents, self.n_x, self.n_x))
-        c = np.zeros((self.N_agents, self.n_x, self.n_x))
-        if is_solved:
-            for i in range(self.N_agents):
-
-                for h in range(1000):
-                    w_h = (np.sum(self.B @ K, axis=0) - self.B[i] @ K[i]) @ np.linalg.matrix_power(A_cl, h)
-                    b[i] = b[i] + np.linalg.matrix_power(A_cl_i[i].T, h+1) @ P_LQR[i] @ w_h
-                    w_h_next = (np.sum(self.B @ K, axis=0) - self.B[i] @ K[i]) @ np.linalg.matrix_power(A_cl, h+1)
-                    b_next[i] = b_next[i] + np.linalg.matrix_power(A_cl_i[i].T, h + 1) @ P_LQR[i] @ w_h_next
-                # K_affine[i] = - np.linalg.inv(self.R[i]) @ self.B[i].T @ (P[i] @ (self.A + np.sum(self.B @ K, axis=0)) + G_i)
-                K_affine[i] = - np.linalg.inv(self.R[i] + self.B[i].T @ P_LQR[i] @ self.B[i]) @ \
-                            self.B[i].T @ (P_LQR[i] @ (self.A + np.sum(self.B @ K, axis=0) - self.B[i] @ K[i]) + b_next[i])
-                if np.linalg.norm(K_affine[i] - K[i]) < eps:
-                    is_condition_verified[i] = True
-                else:
-                    is_condition_verified[i] = False
-
-        '''Verify dynamic programming condition'''
-        # for i in range(self.N_agents):
-        #     V = (P_LQR[i] + P_LQR[i].T)/2 + b[i] + c[i]
-
-
-        return all(is_condition_verified)
+    # def verify_ONE_is_affine_LQR(self, eps=10**(-5)):
+    #     '''
+    #     Verify that the infinite horizon O-NE is the LQR for the affine system where the other agent's inputs is
+    #     considered as a sequence of affine disturbances by checking eq. (4.5) of Monti 2023 for all i,
+    #     with w_i(k) = \sum_{j!=i} B_jK_j x(k)
+    #     b_i(k) = \sum_{h=k}^\inf (A_cl_i.T)^(h-k+1) P_i \sum_{j!=i} B_jK_j x(h)
+    #     A_cl_i = (I+S_iP_i)^(-1)A
+    #     we substitute then
+    #     x(h) = A_cl^(h-k) x(k)
+    #     with A_cl = (I+ \sum_j S_jP_j)^(-1)A
+    #     and remove x(h) from the relations, as they should hold for all x.
+    #     '''
+    #     P, K, is_solved = self.solve_open_loop_inf_hor_problem()
+    #     P_LQR = np.zeros((self.N_agents, self.n_x, self.n_x))
+    #     I_x = np.eye(self.n_x)
+    #     A_cl_i = np.zeros((self.N_agents, self.n_x, self.n_x))
+    #     for i in range(self.N_agents):
+    #         P_LQR[i] = scipy.linalg.solve_discrete_are(self.A, self.B[i], self.Q[i], self.R[i])
+    #         A_cl_i[i] = self.A.T @ (I_x -  self.B[i] @ np.linalg.inv(self.R[i] + self.B[i].T @ P_LQR[i] @ self.B[i]) @ self.B[i].T @ P_LQR[i]).T
+    #     S = self.B @ np.linalg.inv(self.R) @ self.B.T3D()
+    #     A_cl = self.A + np.sum(self.B @ K, axis=0)
+    #     K_affine = np.zeros((self.N_agents, self.n_u, self.n_x))
+    #     is_condition_verified = [False for _ in range(self.N_agents)]
+    #     b = np.zeros((self.N_agents, 100, self.n_x, self.n_x))
+    #     w = np.zeros((self.N_agents, 200, self.n_x, self.n_x))
+    #     c = np.zeros((self.N_agents, 50, self.n_x, self.n_x))
+    #     # b = np.zeros((self.N_agents, self.n_x, self.n_x))
+    #     # b_next = np.zeros((self.N_agents, self.n_x, self.n_x))
+    #     if is_solved:
+    #         for i in range(self.N_agents):
+    #             # for h in range(1000):
+    #             #     w_h = (np.sum(self.B @ K, axis=0) - self.B[i] @ K[i]) @ np.linalg.matrix_power(A_cl, h)
+    #             #     b[i] = b[i] + np.linalg.matrix_power(A_cl_i[i].T, h+1) @ P_LQR[i] @ w_h
+    #             #     w_h_next = (np.sum(self.B @ K, axis=0) - self.B[i] @ K[i]) @ np.linalg.matrix_power(A_cl, h+1)
+    #             #     b_next[i] = b_next[i] + np.linalg.matrix_power(A_cl_i[i].T, h + 1) @ P_LQR[i] @ w_h_next
+    #             for k in range(w.shape[1]):
+    #                 w[i, k] = (np.sum(self.B @ K, axis=0) - self.B[i] @ K[i]) @ np.linalg.matrix_power(A_cl, k)
+    #             for k in range(b.shape[1]):
+    #                 for h in range(k, w.shape[1]):
+    #                     b[i, k] = b[i, k] + np.linalg.matrix_power(A_cl_i[i].T, h - k + 1) @ P_LQR[i] @ w[i,h]
+    #                 if k>0:
+    #                     # Check if eq. (4.9) of [Monti '23] is satisfied
+    #                     err = np.linalg.norm( b[i, k-1] - A_cl_i[i].T @ (b[i,k] + P_LQR[i] @ (np.sum(self.B @ K, axis=0) - self.B[i] @ K[i]) @ np.linalg.matrix_power(A_cl, k -1) ) )
+    #                     if err > 10**(-5):
+    #                         raise RuntimeError("Something is wrong in computing the affine LQR")
+    #             for k in range(98):
+    #                 w = (np.sum(self.B @ K, axis=0) - self.B[i] @ K[i]) @ np.linalg.matrix_power(A_cl, k)
+    #                 c[i] = c[i] + .5 * w.T @ P_LQR[i] @ w + w.T @ b[i,k+1] - \
+    #                          .5 * (self.B[i].T @ (P_LQR[i] @ w + b[i, k+1])).T @ np.linalg.inv(self.R[i] + self.B[i].T @ P_LQR[i] @ self.B[i]) @ \
+    #                          (self.B[i].T @ (P_LQR[i] @ w + b[i, k+1]))
+    #                 w_next = (np.sum(self.B @ K, axis=0) - self.B[i] @ K[i]) @ np.linalg.matrix_power(A_cl, k +1)
+    #                 c_next[i] = c_next[i] + .5 * w_next.T @ P_LQR[i] @ w_next + w_next.T @ b[i, k + 2] - \
+    #                        .5 * (self.B[i].T @ (P_LQR[i] @ w_next + b[i, k + 2])).T @ np.linalg.inv(
+    #                     self.R[i] + self.B[i].T @ P_LQR[i] @ self.B[i]) @ \
+    #                        (self.B[i].T @ (P_LQR[i] @ w_next + b[i, k + 2]))
+    #
+    #             # K_affine[i] = - np.linalg.inv(self.R[i]) @ self.B[i].T @ (P[i] @ (self.A + np.sum(self.B @ K, axis=0)) + G_i)
+    #             # K_affine[i] = - np.linalg.inv(self.R[i] + self.B[i].T @ P_LQR[i] @ self.B[i]) @ \
+    #             #             self.B[i].T @ (P_LQR[i] @ (self.A + np.sum(self.B @ K, axis=0) - self.B[i] @ K[i]) + b_next[i])
+    #             A_cl_Tinv = np.linalg.inv(A_cl_i[i].T)
+    #             K_affine[i] = - np.linalg.inv(self.R[i] + self.B[i].T @ P_LQR[i] @ self.B[i]) @ \
+    #                         self.B[i].T @ (P_LQR[i] @ (self.A) + A_cl_Tinv @ b[i, 0])
+    #             if np.linalg.norm(K_affine[i] - K[i]) < eps:
+    #                 is_condition_verified[i] = True
+    #             else:
+    #                 is_condition_verified[i] = False
+    #
+    #     '''Verify dynamic programming condition'''
+    #     x_0 = np.ones((self.n_x, 1))
+    #
+    #     for i in range(self.N_agents):
+    #         w = (np.sum(self.B @ K, axis=0) - self.B[i] @ K[i]) @ x_0
+    #         b_i = np.zeros((self.n_x, 1))
+    #         b_i_next = np.zeros((self.n_x, 1))
+    #         for k in range(100):
+    #             w_k = (np.sum(self.B @ K, axis=0) - self.B[i] @ K[i]) @ np.linalg.matrix_power(A_cl, k) @ x_0
+    #             b_i = b_i + np.linalg.matrix_power(A_cl_i[i].T, k+1) @ P_LQR[i] @ w_k
+    #             w_next = (np.sum(self.B @ K, axis=0) - self.B[i] @ K[i]) @ np.linalg.matrix_power(A_cl, k+1) @ x_0
+    #             b_i_next = b_i_next + np.linalg.matrix_power(A_cl_i[i].T, k+1) @ P_LQR[i] @ w_next
+    #         A_cl_Tinv = np.linalg.inv(A_cl_i[i].T)
+    #         u_affine_i = - np.linalg.inv(self.R[i] + self.B[i].T @ P_LQR[i] @ self.B[i]) @ self.B[i].T @ (P_LQR[i] @ self.A @ x_0 + A_cl_Tinv @ b_i )
+    #         x_next = self.A @ x_0 + self.B[i] @ u_affine_i + w
+    #         # V = .5 * x_0.T @ P_LQR[i] @ x_0 + x_0.T @ b[i, 0] @ x_0 + x_0.T @ c[i] @ x_0
+    #         V = .5 * x_0.T @ P_LQR[i] @ x_0 + x_0.T @ b_i + c_i
+    #         V_next = .5 * x_0.T @ self.Q[i] @ x_0 + .5 * u_affine_i.T @ self.R[i] @ u_affine_i +\
+    #                  .5 * x_next.T @ P_LQR[i] @ x_next + x_next.T @ b_i_next + c_i_next
+    #
+    #     P[i] - P_LQR[i] - b[i]
+    #
+    #
+    #     return all(is_condition_verified)
 
     def solve_closed_loop_inf_hor_problem(self, n_iter=1000, eps_error=10 ** (-6), method='lyap'):
         """
@@ -562,7 +617,7 @@ class LQ:
     @staticmethod
     def generate_random_game(N_agents, n_states, n_inputs):
         # A sufficient condition for the game to be monotone is Q_i=I for all i
-        A = np.diag(1.3*np.random.random_sample(size=[n_states-1]), k=1) + np.diag(2*np.random.random_sample(size=[n_states]))
+        A = np.diag(1.3*np.random.random_sample(size=[n_states-1]), k=1) + np.diag(0.1 + 1.9*np.random.random_sample(size=[n_states]))
         B = np.zeros((N_agents, n_states, n_inputs))
         Q = np.zeros((N_agents, n_states, n_states))
         R = np.zeros((N_agents, n_inputs, n_inputs))
@@ -581,8 +636,62 @@ class LQ:
         if is_controllable==False:
             warnings.warn("System is not controllable")
         for i in range(N_agents):
-            Q[i, :, :] = generate_random_monotone_matrix(1, n_states, str_mon=.1)
-            Q[i, :, :] = (Q[i, :, :] + Q[i, :, :].T) / 2
+            # Q[i, :, :] = generate_random_monotone_matrix(1, n_states, str_mon=.1)
+            # Q[i, :, :] = (Q[i, :, :] + Q[i, :, :].T) / 2
+            Q[i, :, :] = np.random.random_sample() * np.eye(n_states)
+            # Q[i, :, :] = np.eye(n_states)
             R[i, :, :] = generate_random_monotone_matrix(1, n_inputs, str_mon=.1) #random pos. def. matrix
             R[i, :, :] = (R[i, :, :] + R[i, :, :].T) / 2
         return A, B, Q, R
+
+    def compute_H_matrix(self):
+        A = self.A
+        Q = self.Q
+        S = self.B @ np.linalg.inv(self.R) @ self.B.T3D()
+        I_N = np.eye(self.N_agents)
+        A_Tinv = np.linalg.inv(self.A.T)
+        H_11 = A + np.sum(S @ A_Tinv @ Q, axis=0)
+        H_12 = np.hstack([-S[j] @A_Tinv for j in range(self.N_agents)])
+        H_21 = np.vstack([-A_Tinv @ Q[j] for j in range(self.N_agents)])
+        H_22 = np.kron(I_N, A_Tinv)
+        H = np.vstack((np.hstack((H_11, H_12)),
+                       np.hstack((H_21, H_22))))
+        return H
+
+    def check_P_is_H_graph_invariant_subspace(self, P, eps = 10 **(-5)):
+        '''
+        Given a set of N square matrices P (derived by soling for the O-NE infinite horizon),
+        this function verifies Assumption 4.9 [Monti '23] aposteriori
+        (namely, that P define a stable invariant subspace for the matrix H defined in (4.25) [Monti '23] and that
+        H has only n_x eigenvalues with modulus <1)
+        '''
+        H = self.compute_H_matrix()
+        P_all = np.vstack([P[i] for i in range(self.N_agents)])
+        P_graph = np.vstack((np.eye(self.n_x), P_all))
+        Y = H @ P_graph
+        Y_1 = Y[0:self.n_x, :]
+        err = 0
+        # Verify (4.28) [Monti, '23]
+        Lambda = H[:self.n_x, :] @ P_graph
+        err = np.linalg.norm((H[self.n_x:, :] @ P_graph @ np.linalg.inv(Lambda)) - P_all)
+        if err < eps:
+            is_P_subspace = True
+        else:
+            is_P_subspace = False
+
+        # Check if the subspace is stable
+        max_eigval_subspace = max(np.abs(np.linalg.eigvals(Lambda)))
+        if max_eigval_subspace < 1 and is_P_subspace:
+            is_subspace_stable = True
+        else:
+            is_subspace_stable = False
+
+        # Check if the subspace is the unique stable one
+        mask = np.abs(np.linalg.eigvals(H)) < 1
+        count_stable_eigvals = np.sum(mask)
+        if count_stable_eigvals == self.n_x and is_subspace_stable:
+            is_subspace_unique = True
+        else:
+            is_subspace_unique = False
+
+        return is_P_subspace, is_subspace_stable, is_subspace_unique

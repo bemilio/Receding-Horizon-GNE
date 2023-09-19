@@ -1,5 +1,6 @@
 import warnings
 import numpy as np
+np.set_printoptions(precision=3)
 # import torch
 import pickle
 import games.dyngames as dyngames
@@ -24,12 +25,12 @@ if __name__ == '__main__':
     N_random_tests = 1
 
     # parameters
-    N_iter = 10**6
-    n_x = 4
+    N_iter = 10**7
+    n_x = 3
     n_u = 2
-    T_hor_to_test = [2, 3, 6, 9,12]
+    T_hor_to_test = [2, 4, 6, 9]
     T_sim = 10
-    eps = 10**(-6) # convergence threshold
+    eps = 10**(-2) # convergence threshold
 
     ##########################################
     #   Variables storage inizialization     #
@@ -48,7 +49,11 @@ if __name__ == '__main__':
     P_OL_store = [[np.zeros((N_random_tests, N_agents, n_x, n_x)) for N_agents in N_agents_to_test] for _ in T_hor_to_test]
     A_store = [ [ np.zeros((N_random_tests, n_x, n_x)) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
     B_store = [ [ np.zeros((N_random_tests, N_agents, n_x, n_u)) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
-    status_store = [[ [ 'not run' for _ in range(N_random_tests)] for _ in N_agents_to_test] for _ in T_hor_to_test]
+    is_P_subspace_store = [[ [False for _ in range(N_random_tests)]  for _ in N_agents_to_test] for _ in T_hor_to_test]
+    is_subspace_stable_store = [[ [False for _ in range(N_random_tests)]  for _ in N_agents_to_test] for _ in T_hor_to_test]
+    is_subspace_unique_store = [[ [False for _ in range(N_random_tests)]  for _ in N_agents_to_test] for _ in T_hor_to_test]
+    is_game_solved_store = [[ [ False for _ in range(N_random_tests)] for _ in N_agents_to_test] for _ in T_hor_to_test]
+    is_ONE_solved_store = [[ [ False for _ in range(N_random_tests)] for _ in N_agents_to_test] for _ in T_hor_to_test]
     test_counter = 0
 
     for test in range(N_random_tests):
@@ -76,14 +81,26 @@ if __name__ == '__main__':
                 # dyn_game.set_term_cost_to_inf_hor_sol(mode="CL", method='lyap')
                 x_0 = np.ones((n_x, 1))
                 x_last = np.zeros((n_x, 1)) #stores last state of the sequence
+                # Store system dynamics
+                A_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :] = A
+                B_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :] = B
+                ########################################
+                ####   Compute inf-horizon solution ####
+                ########################################
                 P_CL, K_CL = dyn_game.solve_closed_loop_inf_hor_problem()
                 P_OL, K_OL, is_OL_solved = dyn_game.solve_open_loop_inf_hor_problem()
+                is_ONE_solved_store[T_hor_to_test.index((T_hor))][N_agents_to_test.index(N_agents)][test] = is_OL_solved
+                # Verify assumption 4.9 [Monti '23]
+                is_P_subspace, is_subspace_stable, is_subspace_unique = dyn_game.check_P_is_H_graph_invariant_subspace(P_OL)
+                is_P_subspace_store[T_hor_to_test.index((T_hor))][N_agents_to_test.index(N_agents)][test] = is_P_subspace
+                is_subspace_stable_store[T_hor_to_test.index((T_hor))][N_agents_to_test.index(N_agents)][test] = is_subspace_stable
+                is_subspace_unique_store[T_hor_to_test.index((T_hor))][N_agents_to_test.index(N_agents)][test] = is_subspace_unique
+                # Store inf-horizon solution
                 K_CL_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)] [test, :] = K_CL
                 K_OL_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :] = K_OL
                 P_OL_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :] = P_OL
-                dyn_game.verify_ONE_is_affine_LQR()
-                A_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)] [test, :] = A
-                B_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)] [test, :] = B
+                # dyn_game.verify_ONE_is_affine_LQR()
+
                 for t in range(T_sim):
                     print("Test " + str(test_counter) \
                           + " of " + str(N_random_tests * len(T_hor_to_test) * len(N_agents_to_test)) \
@@ -112,26 +129,30 @@ if __name__ == '__main__':
                     # alg.set_stepsize_using_Lip_const(safety_margin=.9)
                     index_storage = 0
                     avg_time_per_it = 0
-                    for k in range(N_iter):
-                        if k % N_it_per_residual_computation == 0:
-                            # Save performance metrics
-                            u_all, d, r, c = alg.get_state()
-                            residual_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, index_storage, t]= r
-                            # print("Timestep " + str(t) + "; Iteration " + str(k) + "; Residual: " + str(r.item()))
-                            # logging.info("Iteration " + str(k) + " Residual: " + str(r.item()))
-                            index_storage = index_storage + 1
-                            if r.item()<=eps:
-                                break
-                        #  Algorithm run
-                        alg.run_once()
-                    if r.item()>eps:
-                        # If problem is not solved, mark it as unsolved and proceed to next test.
-                        warnings.warn("Nash equilibrium not found")
-                        logging.warn("Nash equilibrium not found")
-                        status_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test] = 'not solved'
-                        break
+                    if is_OL_solved:
+                        for k in range(N_iter):
+                            if k % N_it_per_residual_computation == 0:
+                                # Save performance metrics
+                                u_all, d, r, c = alg.get_state()
+                                residual_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, index_storage, t]= r
+                                # print("Timestep " + str(t) + "; Iteration " + str(k) + "; Residual: " + str(r.item()))
+                                # logging.info("Iteration " + str(k) + " Residual: " + str(r.item()))
+                                index_storage = index_storage + 1
+                                if r.item()<=eps:
+                                    break
+                            #  Algorithm run
+                            alg.run_once()
+                        if r.item()>eps:
+                            # If problem is not solved, mark it as unsolved and proceed to next test.
+                            warnings.warn("Nash equilibrium not found")
+                            logging.warn("Nash equilibrium not found")
+                            is_game_solved_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test] = False
+                            break
+                        else:
+                            is_game_solved_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test] = True
                     else:
-                        status_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test] = 'solved'
+                        is_game_solved_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test] = False
+                        break
                     # Convert optimization variable into state and input
                     u_all, d, r, c = alg.get_state()
                     u_0 = dyn_game.get_input_timestep_from_opt_var(u_all, 0)
@@ -176,9 +197,11 @@ if __name__ == '__main__':
     logging.info("Saving results...")
     f = open('rec_hor_consistency_result_'+ str(job_id) + ".pkl", 'wb')
     pickle.dump([ x_store, u_store, residual_store, u_pred_traj_store, x_pred_traj_store, u_shifted_traj_store,\
-                  K_CL_store, K_OL_store, A_store, B_store,\
-                  T_hor_to_test, N_agents_to_test, status_store,
-                  cost_store, u_PMP_CL_store, u_PMP_OL_store, P_OL_store], f)
+                  K_CL_store, K_OL_store, A_store, B_store,
+                  T_hor_to_test, N_agents_to_test,
+                  cost_store, u_PMP_CL_store, u_PMP_OL_store, P_OL_store,
+                  is_game_solved_store, is_ONE_solved_store, is_P_subspace_store,
+                  is_subspace_stable_store, is_subspace_unique_store], f)
     f.close()
     print("Saved")
     logging.info("Saved, job done")
