@@ -362,97 +362,56 @@ class LQ:
                 warnings.warn("The infinite horizon OL-GNE has an unstable dynamics")
         return P, K, is_solved
 
-    # def verify_ONE_is_affine_LQR(self, eps=10**(-5)):
-    #     '''
-    #     Verify that the infinite horizon O-NE is the LQR for the affine system where the other agent's inputs is
-    #     considered as a sequence of affine disturbances by checking eq. (4.5) of Monti 2023 for all i,
-    #     with w_i(k) = \sum_{j!=i} B_jK_j x(k)
-    #     b_i(k) = \sum_{h=k}^\inf (A_cl_i.T)^(h-k+1) P_i \sum_{j!=i} B_jK_j x(h)
-    #     A_cl_i = (I+S_iP_i)^(-1)A
-    #     we substitute then
-    #     x(h) = A_cl^(h-k) x(k)
-    #     with A_cl = (I+ \sum_j S_jP_j)^(-1)A
-    #     and remove x(h) from the relations, as they should hold for all x.
-    #     '''
-    #     P, K, is_solved = self.solve_open_loop_inf_hor_problem()
-    #     P_LQR = np.zeros((self.N_agents, self.n_x, self.n_x))
-    #     I_x = np.eye(self.n_x)
-    #     A_cl_i = np.zeros((self.N_agents, self.n_x, self.n_x))
-    #     for i in range(self.N_agents):
-    #         P_LQR[i] = scipy.linalg.solve_discrete_are(self.A, self.B[i], self.Q[i], self.R[i])
-    #         A_cl_i[i] = self.A.T @ (I_x -  self.B[i] @ np.linalg.inv(self.R[i] + self.B[i].T @ P_LQR[i] @ self.B[i]) @ self.B[i].T @ P_LQR[i]).T
-    #     S = self.B @ np.linalg.inv(self.R) @ self.B.T3D()
-    #     A_cl = self.A + np.sum(self.B @ K, axis=0)
-    #     K_affine = np.zeros((self.N_agents, self.n_u, self.n_x))
-    #     is_condition_verified = [False for _ in range(self.N_agents)]
-    #     b = np.zeros((self.N_agents, 100, self.n_x, self.n_x))
-    #     w = np.zeros((self.N_agents, 200, self.n_x, self.n_x))
-    #     c = np.zeros((self.N_agents, 50, self.n_x, self.n_x))
-    #     # b = np.zeros((self.N_agents, self.n_x, self.n_x))
-    #     # b_next = np.zeros((self.N_agents, self.n_x, self.n_x))
-    #     if is_solved:
-    #         for i in range(self.N_agents):
-    #             # for h in range(1000):
-    #             #     w_h = (np.sum(self.B @ K, axis=0) - self.B[i] @ K[i]) @ np.linalg.matrix_power(A_cl, h)
-    #             #     b[i] = b[i] + np.linalg.matrix_power(A_cl_i[i].T, h+1) @ P_LQR[i] @ w_h
-    #             #     w_h_next = (np.sum(self.B @ K, axis=0) - self.B[i] @ K[i]) @ np.linalg.matrix_power(A_cl, h+1)
-    #             #     b_next[i] = b_next[i] + np.linalg.matrix_power(A_cl_i[i].T, h + 1) @ P_LQR[i] @ w_h_next
-    #             for k in range(w.shape[1]):
-    #                 w[i, k] = (np.sum(self.B @ K, axis=0) - self.B[i] @ K[i]) @ np.linalg.matrix_power(A_cl, k)
-    #             for k in range(b.shape[1]):
-    #                 for h in range(k, w.shape[1]):
-    #                     b[i, k] = b[i, k] + np.linalg.matrix_power(A_cl_i[i].T, h - k + 1) @ P_LQR[i] @ w[i,h]
-    #                 if k>0:
-    #                     # Check if eq. (4.9) of [Monti '23] is satisfied
-    #                     err = np.linalg.norm( b[i, k-1] - A_cl_i[i].T @ (b[i,k] + P_LQR[i] @ (np.sum(self.B @ K, axis=0) - self.B[i] @ K[i]) @ np.linalg.matrix_power(A_cl, k -1) ) )
-    #                     if err > 10**(-5):
-    #                         raise RuntimeError("Something is wrong in computing the affine LQR")
-    #             for k in range(98):
-    #                 w = (np.sum(self.B @ K, axis=0) - self.B[i] @ K[i]) @ np.linalg.matrix_power(A_cl, k)
-    #                 c[i] = c[i] + .5 * w.T @ P_LQR[i] @ w + w.T @ b[i,k+1] - \
-    #                          .5 * (self.B[i].T @ (P_LQR[i] @ w + b[i, k+1])).T @ np.linalg.inv(self.R[i] + self.B[i].T @ P_LQR[i] @ self.B[i]) @ \
-    #                          (self.B[i].T @ (P_LQR[i] @ w + b[i, k+1]))
-    #                 w_next = (np.sum(self.B @ K, axis=0) - self.B[i] @ K[i]) @ np.linalg.matrix_power(A_cl, k +1)
-    #                 c_next[i] = c_next[i] + .5 * w_next.T @ P_LQR[i] @ w_next + w_next.T @ b[i, k + 2] - \
-    #                        .5 * (self.B[i].T @ (P_LQR[i] @ w_next + b[i, k + 2])).T @ np.linalg.inv(
-    #                     self.R[i] + self.B[i].T @ P_LQR[i] @ self.B[i]) @ \
-    #                        (self.B[i].T @ (P_LQR[i] @ w_next + b[i, k + 2]))
-    #
-    #             # K_affine[i] = - np.linalg.inv(self.R[i]) @ self.B[i].T @ (P[i] @ (self.A + np.sum(self.B @ K, axis=0)) + G_i)
-    #             # K_affine[i] = - np.linalg.inv(self.R[i] + self.B[i].T @ P_LQR[i] @ self.B[i]) @ \
-    #             #             self.B[i].T @ (P_LQR[i] @ (self.A + np.sum(self.B @ K, axis=0) - self.B[i] @ K[i]) + b_next[i])
-    #             A_cl_Tinv = np.linalg.inv(A_cl_i[i].T)
-    #             K_affine[i] = - np.linalg.inv(self.R[i] + self.B[i].T @ P_LQR[i] @ self.B[i]) @ \
-    #                         self.B[i].T @ (P_LQR[i] @ (self.A) + A_cl_Tinv @ b[i, 0])
-    #             if np.linalg.norm(K_affine[i] - K[i]) < eps:
-    #                 is_condition_verified[i] = True
-    #             else:
-    #                 is_condition_verified[i] = False
-    #
-    #     '''Verify dynamic programming condition'''
-    #     x_0 = np.ones((self.n_x, 1))
-    #
-    #     for i in range(self.N_agents):
-    #         w = (np.sum(self.B @ K, axis=0) - self.B[i] @ K[i]) @ x_0
-    #         b_i = np.zeros((self.n_x, 1))
-    #         b_i_next = np.zeros((self.n_x, 1))
-    #         for k in range(100):
-    #             w_k = (np.sum(self.B @ K, axis=0) - self.B[i] @ K[i]) @ np.linalg.matrix_power(A_cl, k) @ x_0
-    #             b_i = b_i + np.linalg.matrix_power(A_cl_i[i].T, k+1) @ P_LQR[i] @ w_k
-    #             w_next = (np.sum(self.B @ K, axis=0) - self.B[i] @ K[i]) @ np.linalg.matrix_power(A_cl, k+1) @ x_0
-    #             b_i_next = b_i_next + np.linalg.matrix_power(A_cl_i[i].T, k+1) @ P_LQR[i] @ w_next
-    #         A_cl_Tinv = np.linalg.inv(A_cl_i[i].T)
-    #         u_affine_i = - np.linalg.inv(self.R[i] + self.B[i].T @ P_LQR[i] @ self.B[i]) @ self.B[i].T @ (P_LQR[i] @ self.A @ x_0 + A_cl_Tinv @ b_i )
-    #         x_next = self.A @ x_0 + self.B[i] @ u_affine_i + w
-    #         # V = .5 * x_0.T @ P_LQR[i] @ x_0 + x_0.T @ b[i, 0] @ x_0 + x_0.T @ c[i] @ x_0
-    #         V = .5 * x_0.T @ P_LQR[i] @ x_0 + x_0.T @ b_i + c_i
-    #         V_next = .5 * x_0.T @ self.Q[i] @ x_0 + .5 * u_affine_i.T @ self.R[i] @ u_affine_i +\
-    #                  .5 * x_next.T @ P_LQR[i] @ x_next + x_next.T @ b_i_next + c_i_next
-    #
-    #     P[i] - P_LQR[i] - b[i]
-    #
-    #
-    #     return all(is_condition_verified)
+    def verify_ONE_is_affine_LQR(self, eps=10**(-5)):
+        '''
+        Verify that the infinite horizon O-NE is the LQR for the affine system where the other agent's inputs is
+        considered as a sequence of affine disturbances by checking eq. (4.5) of Monti 2023 for all i,
+        with w_i(k) = \sum_{j!=i} B_jK_j x(k)
+        b_i(k) = \sum_{h=k}^\inf (A_cl_i.T)^(h-k+1) P_i \sum_{j!=i} B_jK_j x(h)
+        A_cl_i = (I+S_iP_i)^(-1)A
+        we substitute then
+        x(h) = A_cl^(h-k) x(k)
+        with A_cl = (I+ \sum_j S_jP_j)^(-1)A
+        and remove x(h) from the relations, as they should hold for all x.
+        '''
+        P, K, is_solved = self.solve_open_loop_inf_hor_problem()
+        P_LQR = np.zeros((self.N_agents, self.n_x, self.n_x))
+        K_LQR = np.zeros((self.N_agents, self.n_u, self.n_x))
+        I_x = np.eye(self.n_x)
+        A_cl_i = np.zeros((self.N_agents, self.n_x, self.n_x))
+        for i in range(self.N_agents):
+            P_LQR[i] = scipy.linalg.solve_discrete_are(self.A, self.B[i], self.Q[i], self.R[i])
+            K_LQR[i] = - np.linalg.inv(self.B[i].T @ P_LQR[i] @ self.B[i] + self.R[i]) @ self.B[i].T @ P_LQR[i] @ self.A
+            A_cl_i[i] = (self.A.T @ (I_x -  self.B[i] @ np.linalg.inv(self.R[i] + self.B[i].T @ P_LQR[i] @ self.B[i]) @ self.B[i].T @ P_LQR[i]).T).T
+        S = self.B @ np.linalg.inv(self.R) @ self.B.T3D()
+        A_cl = self.A + np.sum(self.B @ K, axis=0)
+        K_affine = np.zeros((self.N_agents, self.n_u, self.n_x))
+        is_condition_verified = [False for _ in range(self.N_agents)]
+        b = np.zeros((self.N_agents, 100, self.n_x, self.n_x))
+        w = np.zeros((self.N_agents, 200, self.n_x, self.n_x))
+        c = np.zeros((self.N_agents, 50, self.n_x, self.n_x))
+        # b = np.zeros((self.N_agents, self.n_x, self.n_x))
+        # b_next = np.zeros((self.N_agents, self.n_x, self.n_x))
+        if is_solved:
+            for i in range(self.N_agents):
+                for k in range(w.shape[1]):
+                    w[i, k] = (np.sum(self.B @ K, axis=0) - self.B[i] @ K[i]) @ np.linalg.matrix_power(A_cl, k)
+                for k in range(b.shape[1]):
+                    for h in range(k, w.shape[1]):
+                        b[i, k] = b[i, k] + np.linalg.matrix_power(A_cl_i[i].T, h - k + 1) @ P_LQR[i] @ w[i,h]
+                    if k>0:
+                        # Check if eq. (4.9) of [Monti '23] is satisfied
+                        err = np.linalg.norm( b[i, k-1] - A_cl_i[i].T @ (b[i,k] + P_LQR[i] @ (np.sum(self.B @ K, axis=0) - self.B[i] @ K[i]) @ np.linalg.matrix_power(A_cl, k -1) ) )
+                        if err > 10**(-5):
+                            raise RuntimeError("Something is wrong in computing the affine LQR")
+                A_cl_Tinv = np.linalg.inv(A_cl_i[i].T)
+                K_affine[i] = - np.linalg.inv(self.R[i] + self.B[i].T @ P_LQR[i] @ self.B[i]) @ self.B[i].T @ (P_LQR[i] @ self.A + A_cl_Tinv @ b[i, 0])
+                # K_affine[i] = - np.linalg.inv(self.R[i] + self.B[i].T @ P_LQR[i] @ self.B[i]) @ self.B[i].T @ ((P_LQR[i] @ (self.A + w[i,0]) ) + b[i, 1])
+                if np.linalg.norm(K_affine[i] - K[i]) < eps and np.linalg.norm(P[i] - P_LQR[i] - b[i, 0]) < eps:
+                    is_condition_verified[i] = True
+                else:
+                    is_condition_verified[i] = False
+        return all(is_condition_verified)
 
     def solve_closed_loop_inf_hor_problem(self, n_iter=1000, eps_error=10 ** (-6), method='lyap'):
         """
@@ -636,9 +595,9 @@ class LQ:
         if is_controllable==False:
             warnings.warn("System is not controllable")
         for i in range(N_agents):
-            # Q[i, :, :] = generate_random_monotone_matrix(1, n_states, str_mon=.1)
-            # Q[i, :, :] = (Q[i, :, :] + Q[i, :, :].T) / 2
-            Q[i, :, :] = np.random.random_sample() * np.eye(n_states)
+            Q[i, :, :] = generate_random_monotone_matrix(1, n_states, str_mon=.1)
+            Q[i, :, :] = (Q[i, :, :] + Q[i, :, :].T) / 2
+            # Q[i, :, :] = np.random.random_sample() * np.eye(n_states)
             # Q[i, :, :] = np.eye(n_states)
             R[i, :, :] = generate_random_monotone_matrix(1, n_inputs, str_mon=.1) #random pos. def. matrix
             R[i, :, :] = (R[i, :, :] + R[i, :, :].T) / 2

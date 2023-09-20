@@ -30,30 +30,31 @@ if __name__ == '__main__':
     n_u = 2
     T_hor_to_test = [2, 4, 6, 9]
     T_sim = 10
-    eps = 10**(-2) # convergence threshold
+    eps = 10**(-5) # convergence threshold
 
     ##########################################
     #   Variables storage inizialization     #
     ##########################################
-    x_store = [ [ np.zeros((N_random_tests, n_x, T_sim)) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
-    u_store = [ [ np.zeros((N_random_tests, N_agents, n_u, T_sim)) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
-    u_PMP_CL_store = [[np.zeros((N_random_tests, N_agents, n_u, T_sim)) for N_agents in N_agents_to_test] for _ in T_hor_to_test]
-    u_PMP_OL_store = [[np.zeros((N_random_tests, N_agents, n_u, T_sim)) for N_agents in N_agents_to_test] for _ in T_hor_to_test]
-    u_pred_traj_store = [ [ np.zeros((N_random_tests, N_agents, T_hor * n_u, T_sim)) for N_agents in N_agents_to_test ] for T_hor in T_hor_to_test ]
-    x_pred_traj_store = [ [ np.zeros((N_random_tests, T_hor * n_x, T_sim)) for N_agents in N_agents_to_test ] for T_hor in T_hor_to_test ]
-    u_shifted_traj_store = [ [ np.zeros((N_random_tests, N_agents, T_hor * n_u, T_sim)) for N_agents in N_agents_to_test ] for T_hor in T_hor_to_test ]
-    residual_store = [ [np.zeros((N_random_tests, (N_iter // N_it_per_residual_computation), T_sim)) for _ in N_agents_to_test ] for _ in T_hor_to_test ]
-    cost_store = [[np.zeros((N_random_tests, N_agents, T_sim)) for N_agents in N_agents_to_test] for _ in T_hor_to_test]
-    K_CL_store = [ [ np.zeros((N_random_tests, N_agents, n_u, n_x)) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
-    K_OL_store = [ [ np.zeros((N_random_tests, N_agents, n_u, n_x)) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
-    P_OL_store = [[np.zeros((N_random_tests, N_agents, n_x, n_x)) for N_agents in N_agents_to_test] for _ in T_hor_to_test]
-    A_store = [ [ np.zeros((N_random_tests, n_x, n_x)) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
-    B_store = [ [ np.zeros((N_random_tests, N_agents, n_x, n_u)) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
+    x_store = [ [ np.zeros((N_random_tests, n_x, T_sim), dtype=np.float32) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
+    u_store = [ [ np.zeros((N_random_tests, N_agents, n_u, T_sim), dtype=np.float32) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
+    # u_PMP_CL_store = [[np.zeros((N_random_tests, N_agents, n_u, T_sim)) for N_agents in N_agents_to_test] for _ in T_hor_to_test]
+    # u_PMP_OL_store = [[np.zeros((N_random_tests, N_agents, n_u, T_sim)) for N_agents in N_agents_to_test] for _ in T_hor_to_test]
+    u_pred_traj_store = [ [ np.zeros((N_random_tests, N_agents, T_hor * n_u, T_sim), dtype=np.float32) for N_agents in N_agents_to_test ] for T_hor in T_hor_to_test ]
+    x_pred_traj_store = [ [ np.zeros((N_random_tests, T_hor * n_x, T_sim), dtype=np.float32) for N_agents in N_agents_to_test ] for T_hor in T_hor_to_test ]
+    u_shifted_traj_store = [ [ np.zeros((N_random_tests, N_agents, T_hor * n_u, T_sim), dtype=np.float32) for N_agents in N_agents_to_test ] for T_hor in T_hor_to_test ]
+    residual_store = [ [np.zeros((N_random_tests, (N_iter // N_it_per_residual_computation), T_sim), dtype=np.float32) for _ in N_agents_to_test ] for _ in T_hor_to_test ]
+    cost_store = [[np.zeros((N_random_tests, N_agents, T_sim), dtype=np.float32) for N_agents in N_agents_to_test] for _ in T_hor_to_test]
+    # K_CL_store = [ [ np.zeros((N_random_tests, N_agents, n_u, n_x)) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
+    K_OL_store = [ [ np.zeros((N_random_tests, N_agents, n_u, n_x), dtype=np.float32) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
+    P_OL_store = [[np.zeros((N_random_tests, N_agents, n_x, n_x), dtype=np.float32) for N_agents in N_agents_to_test] for _ in T_hor_to_test]
+    # A_store = [ [ np.zeros((N_random_tests, n_x, n_x)) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
+    # B_store = [ [ np.zeros((N_random_tests, N_agents, n_x, n_u)) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
     is_P_subspace_store = [[ [False for _ in range(N_random_tests)]  for _ in N_agents_to_test] for _ in T_hor_to_test]
     is_subspace_stable_store = [[ [False for _ in range(N_random_tests)]  for _ in N_agents_to_test] for _ in T_hor_to_test]
     is_subspace_unique_store = [[ [False for _ in range(N_random_tests)]  for _ in N_agents_to_test] for _ in T_hor_to_test]
     is_game_solved_store = [[ [ False for _ in range(N_random_tests)] for _ in N_agents_to_test] for _ in T_hor_to_test]
     is_ONE_solved_store = [[ [ False for _ in range(N_random_tests)] for _ in N_agents_to_test] for _ in T_hor_to_test]
+    is_ONE_equal_to_affine_LQR_store = [[ [ False for _ in range(N_random_tests)] for _ in N_agents_to_test] for _ in T_hor_to_test]
     test_counter = 0
 
     for test in range(N_random_tests):
@@ -82,8 +83,8 @@ if __name__ == '__main__':
                 x_0 = np.ones((n_x, 1))
                 x_last = np.zeros((n_x, 1)) #stores last state of the sequence
                 # Store system dynamics
-                A_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :] = A
-                B_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :] = B
+                # A_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :] = A
+                # B_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :] = B
                 ########################################
                 ####   Compute inf-horizon solution ####
                 ########################################
@@ -96,10 +97,11 @@ if __name__ == '__main__':
                 is_subspace_stable_store[T_hor_to_test.index((T_hor))][N_agents_to_test.index(N_agents)][test] = is_subspace_stable
                 is_subspace_unique_store[T_hor_to_test.index((T_hor))][N_agents_to_test.index(N_agents)][test] = is_subspace_unique
                 # Store inf-horizon solution
-                K_CL_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)] [test, :] = K_CL
+                # K_CL_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)] [test, :] = K_CL
                 K_OL_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :] = K_OL
                 P_OL_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :] = P_OL
-                # dyn_game.verify_ONE_is_affine_LQR()
+
+                is_ONE_equal_to_affine_LQR = dyn_game.verify_ONE_is_affine_LQR()
 
                 for t in range(T_sim):
                     print("Test " + str(test_counter) \
@@ -156,20 +158,20 @@ if __name__ == '__main__':
                     # Convert optimization variable into state and input
                     u_all, d, r, c = alg.get_state()
                     u_0 = dyn_game.get_input_timestep_from_opt_var(u_all, 0)
-                    u_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :, :, t] = u_0.squeeze(2)
-                    residual_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, index_storage-1,t]  = r
-                    cost_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :, t] = c.squeeze()
-                    u_pred_traj_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :, :, t] = u_all.squeeze(2)
-                    x_pred_traj_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :, t] = (dyn_game.T @ x_0 + np.sum(dyn_game.S @ u_all, axis=0)).squeeze()
-                    u_shifted_traj_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :, :, t] = dyn_game.get_shifted_trajectory_from_opt_var(u_all, x_0).squeeze(2)
+                    u_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :, :, t] = u_0.squeeze(2).astype(np.float32)
+                    residual_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, index_storage-1,t]  = r.astype(np.float32)
+                    cost_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :, t] = c.squeeze().astype(np.float32)
+                    u_pred_traj_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :, :, t] = u_all.squeeze(2).astype(np.float32)
+                    x_pred_traj_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :, t] = (dyn_game.T @ x_0 + np.sum(dyn_game.S @ u_all, axis=0)).squeeze().astype(np.float32)
+                    u_shifted_traj_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :, :, t] = dyn_game.get_shifted_trajectory_from_opt_var(u_all, x_0).squeeze(2).astype(np.float32)
 
                     # Compute solution with PMP
                     u_PMP_CL, x_PMP_CL, _ = dyn_game.solve_CL_with_PMP(P_CL,
                                                 np.linalg.matrix_power(A + np.sum(B @ K_CL, axis=0), T_hor) @ x_0, K_CL)
                     u_PMP_OL, x_PMP_OL, _ = dyn_game.solve_OL_with_PMP(P_OL,
                                                 np.linalg.matrix_power(A + np.sum(B @ K_OL, axis=0), T_hor) @ x_0)
-                    u_PMP_CL_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :, :, t] = u_PMP_CL[:,0,:].squeeze()
-                    u_PMP_OL_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :, :, t] = u_PMP_OL[:,0,:].squeeze()
+                    # u_PMP_CL_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :, :, t] = u_PMP_CL[:,0,:].squeeze()
+                    # u_PMP_OL_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :, :, t] = u_PMP_OL[:,0,:].squeeze()
                     # Just for testing, check is u_0 = K x_0
                     # if norm(u_0 - dyn_game.K @ x_0) > eps:
                     #     warnings.warn("The inf. hor. controller is not the same as the MPC input ")
@@ -190,18 +192,24 @@ if __name__ == '__main__':
 
                     # Evolve state
                     x_0 = A @ x_0 + np.sum(B @ u_0, axis=0)
-                    x_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :, t] = x_0.squeeze(1)
+                    x_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :, t] = x_0.squeeze(1).astype(np.float32)
 
 
     print("Saving results...")
     logging.info("Saving results...")
     f = open('rec_hor_consistency_result_'+ str(job_id) + ".pkl", 'wb')
+    # pickle.dump([ x_store, u_store, residual_store, u_pred_traj_store, x_pred_traj_store, u_shifted_traj_store,\
+    #               K_CL_store, K_OL_store, A_store, B_store,
+    #               T_hor_to_test, N_agents_to_test,
+    #               cost_store, u_PMP_CL_store, u_PMP_OL_store, P_OL_store,
+    #               is_game_solved_store, is_ONE_solved_store, is_P_subspace_store,
+    #               is_subspace_stable_store, is_subspace_unique_store], f)
     pickle.dump([ x_store, u_store, residual_store, u_pred_traj_store, x_pred_traj_store, u_shifted_traj_store,\
-                  K_CL_store, K_OL_store, A_store, B_store,
+                  K_OL_store,
                   T_hor_to_test, N_agents_to_test,
-                  cost_store, u_PMP_CL_store, u_PMP_OL_store, P_OL_store,
+                  cost_store, P_OL_store,
                   is_game_solved_store, is_ONE_solved_store, is_P_subspace_store,
-                  is_subspace_stable_store, is_subspace_unique_store], f)
+                  is_subspace_stable_store, is_subspace_unique_store, is_ONE_equal_to_affine_LQR_store], f)
     f.close()
     print("Saved")
     logging.info("Saved, job done")

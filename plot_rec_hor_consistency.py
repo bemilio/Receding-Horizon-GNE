@@ -31,10 +31,6 @@ else:
     for filename in os.listdir(directory):
         if filename.find('.pkl')>=0:
             N_files=N_files+1 #count all files
-    visited_nodes = {} #[test, T_horiz]
-    initial_junctions_stored = {} #[test]
-    final_destinations_stored = {} #[test]
-    congestion_baseline_stored = {} #[test]
     N_tests=0
     for filename in os.listdir(directory):
         if filename.find('.pkl')>=0:
@@ -142,6 +138,7 @@ for i_T_hor in range(N_tested_T_hor):
                         max(diff_last_input_and_OL[i_random_test, i_T_hor, i_N_agents], norm(u_last - K @ x_second_last))
 
 # Difference between first input and input computed using K CL:
+
 diff_first_input_and_CL = np.zeros((N_random_tests, N_tested_T_hor, N_tested_N_agents))
 for i_T_hor in range(N_tested_T_hor):
     for i_N_agents in range(N_tested_N_agents):
