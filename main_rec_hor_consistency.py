@@ -28,7 +28,7 @@ if __name__ == '__main__':
     N_iter = 10**7
     n_x = 3
     n_u = 2
-    T_hor_to_test = [2, 4, 6, 9]
+    T_hor_to_test = [9]
     T_sim = 10
     eps = 10**(-5) # convergence threshold
 
@@ -37,18 +37,23 @@ if __name__ == '__main__':
     ##########################################
     x_store = [ [ np.zeros((N_random_tests, n_x, T_sim), dtype=np.float32) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
     u_store = [ [ np.zeros((N_random_tests, N_agents, n_u, T_sim), dtype=np.float32) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
-    # u_PMP_CL_store = [[np.zeros((N_random_tests, N_agents, n_u, T_sim)) for N_agents in N_agents_to_test] for _ in T_hor_to_test]
-    # u_PMP_OL_store = [[np.zeros((N_random_tests, N_agents, n_u, T_sim)) for N_agents in N_agents_to_test] for _ in T_hor_to_test]
+    u_PMP_CL_store = [[np.zeros((N_random_tests, N_agents, n_u, T_sim)) for N_agents in N_agents_to_test] for _ in T_hor_to_test]
+    u_PMP_OL_store = [[np.zeros((N_random_tests, N_agents, n_u, T_sim)) for N_agents in N_agents_to_test] for _ in T_hor_to_test]
     u_pred_traj_store = [ [ np.zeros((N_random_tests, N_agents, T_hor * n_u, T_sim), dtype=np.float32) for N_agents in N_agents_to_test ] for T_hor in T_hor_to_test ]
     x_pred_traj_store = [ [ np.zeros((N_random_tests, T_hor * n_x, T_sim), dtype=np.float32) for N_agents in N_agents_to_test ] for T_hor in T_hor_to_test ]
     u_shifted_traj_store = [ [ np.zeros((N_random_tests, N_agents, T_hor * n_u, T_sim), dtype=np.float32) for N_agents in N_agents_to_test ] for T_hor in T_hor_to_test ]
     residual_store = [ [np.zeros((N_random_tests, (N_iter // N_it_per_residual_computation), T_sim), dtype=np.float32) for _ in N_agents_to_test ] for _ in T_hor_to_test ]
     cost_store = [[np.zeros((N_random_tests, N_agents, T_sim), dtype=np.float32) for N_agents in N_agents_to_test] for _ in T_hor_to_test]
-    # K_CL_store = [ [ np.zeros((N_random_tests, N_agents, n_u, n_x)) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
+    K_CL_store = [ [ np.zeros((N_random_tests, N_agents, n_u, n_x)) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
     K_OL_store = [ [ np.zeros((N_random_tests, N_agents, n_u, n_x), dtype=np.float32) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
     P_OL_store = [[np.zeros((N_random_tests, N_agents, n_x, n_x), dtype=np.float32) for N_agents in N_agents_to_test] for _ in T_hor_to_test]
-    # A_store = [ [ np.zeros((N_random_tests, n_x, n_x)) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
-    # B_store = [ [ np.zeros((N_random_tests, N_agents, n_x, n_u)) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
+    A_store = [ [ np.zeros((N_random_tests, n_x, n_x)) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
+    B_store = [ [ np.zeros((N_random_tests, N_agents, n_x, n_u)) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
+    is_P_symmetric_store = [[ [False for _ in range(N_random_tests)]  for _ in N_agents_to_test] for _ in T_hor_to_test]
+    is_P_posdef_store = [[ [False for _ in range(N_random_tests)]  for _ in N_agents_to_test] for _ in T_hor_to_test]
+    is_K_stable_store = [[ [False for _ in range(N_random_tests)]  for _ in N_agents_to_test] for _ in T_hor_to_test]
+    is_ONE_and_affine_cost_to_go_equal_store = [[ [False for _ in range(N_random_tests)]  for _ in N_agents_to_test] for _ in T_hor_to_test]
+    # is_fin_hor_input_equal_to_inf_hor_store = [[ [False for _ in range(N_random_tests)]  for _ in N_agents_to_test] for _ in T_hor_to_test]
     is_P_subspace_store = [[ [False for _ in range(N_random_tests)]  for _ in N_agents_to_test] for _ in T_hor_to_test]
     is_subspace_stable_store = [[ [False for _ in range(N_random_tests)]  for _ in N_agents_to_test] for _ in T_hor_to_test]
     is_subspace_unique_store = [[ [False for _ in range(N_random_tests)]  for _ in N_agents_to_test] for _ in T_hor_to_test]
@@ -83,25 +88,32 @@ if __name__ == '__main__':
                 x_0 = np.ones((n_x, 1))
                 x_last = np.zeros((n_x, 1)) #stores last state of the sequence
                 # Store system dynamics
-                # A_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :] = A
-                # B_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :] = B
+                A_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :] = A
+                B_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :] = B
                 ########################################
                 ####   Compute inf-horizon solution ####
                 ########################################
                 P_CL, K_CL = dyn_game.solve_closed_loop_inf_hor_problem()
-                P_OL, K_OL, is_OL_solved = dyn_game.solve_open_loop_inf_hor_problem()
+                P_OL, K_OL, is_OL_solved, is_OL_stable, is_P_symmetric, is_P_posdef = dyn_game.solve_open_loop_inf_hor_problem()
                 is_ONE_solved_store[T_hor_to_test.index((T_hor))][N_agents_to_test.index(N_agents)][test] = is_OL_solved
+                is_P_symmetric_store[T_hor_to_test.index((T_hor))][N_agents_to_test.index(N_agents)][test] = is_P_symmetric
+                is_P_posdef_store[T_hor_to_test.index((T_hor))][N_agents_to_test.index(N_agents)][test] = is_P_posdef
+                is_K_stable_store[T_hor_to_test.index((T_hor))][N_agents_to_test.index(N_agents)][test] = is_OL_stable
                 # Verify assumption 4.9 [Monti '23]
                 is_P_subspace, is_subspace_stable, is_subspace_unique = dyn_game.check_P_is_H_graph_invariant_subspace(P_OL)
                 is_P_subspace_store[T_hor_to_test.index((T_hor))][N_agents_to_test.index(N_agents)][test] = is_P_subspace
                 is_subspace_stable_store[T_hor_to_test.index((T_hor))][N_agents_to_test.index(N_agents)][test] = is_subspace_stable
                 is_subspace_unique_store[T_hor_to_test.index((T_hor))][N_agents_to_test.index(N_agents)][test] = is_subspace_unique
                 # Store inf-horizon solution
-                # K_CL_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)] [test, :] = K_CL
+                K_CL_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)] [test, :] = K_CL
                 K_OL_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :] = K_OL
                 P_OL_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :] = P_OL
 
-                is_ONE_equal_to_affine_LQR = dyn_game.verify_ONE_is_affine_LQR()
+                is_ONE_equal_to_affine_LQR, is_ONE_and_affine_cost_to_go_equal = dyn_game.verify_ONE_is_affine_LQR()
+                is_ONE_equal_to_affine_LQR_store[T_hor_to_test.index((T_hor))][N_agents_to_test.index(N_agents)][test] = is_ONE_equal_to_affine_LQR
+                is_ONE_and_affine_cost_to_go_equal_store[T_hor_to_test.index((T_hor))][N_agents_to_test.index(N_agents)][test] = is_ONE_and_affine_cost_to_go_equal_store
+
+                K_closed_form = dyn_game.solve_closed_form_MPC(T_hor, P_OL)
 
                 for t in range(T_sim):
                     print("Test " + str(test_counter) \
@@ -170,25 +182,11 @@ if __name__ == '__main__':
                                                 np.linalg.matrix_power(A + np.sum(B @ K_CL, axis=0), T_hor) @ x_0, K_CL)
                     u_PMP_OL, x_PMP_OL, _ = dyn_game.solve_OL_with_PMP(P_OL,
                                                 np.linalg.matrix_power(A + np.sum(B @ K_OL, axis=0), T_hor) @ x_0)
-                    # u_PMP_CL_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :, :, t] = u_PMP_CL[:,0,:].squeeze()
-                    # u_PMP_OL_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :, :, t] = u_PMP_OL[:,0,:].squeeze()
-                    # Just for testing, check is u_0 = K x_0
-                    # if norm(u_0 - dyn_game.K @ x_0) > eps:
-                    #     warnings.warn("The inf. hor. controller is not the same as the MPC input ")
-
-                    # just for testing, check whether last state is as predicted
-                    # if t >= 1:
-                    #     if norm(x_last - (dyn_game.S_single[:, -2 * n_x:-n_x, :] @ u_all + dyn_game.T_single[:, -2 * n_x:-n_x,
-                    #                                                                        :] @ x_0)) > eps:
-                    #         warnings.warn("The terminal constraint is not satisfied")
+                    u_PMP_CL_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :, :, t] = u_PMP_CL[:,0,:].squeeze()
+                    u_PMP_OL_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :, :, t] = u_PMP_OL[:,0,:].squeeze()
 
                     # store last state
                     x_last[:] = dyn_game.T[-n_x:, :] @ x_0 + np.sum(dyn_game.S[:, -n_x:, :] @ u_all, axis=0)
-
-                    # # just a check
-                    # if norm( dyn_game.S_single[:, n_x:2*n_x, :] @ u_all + dyn_game.T_single[:, n_x:2*n_x, :] @ x_0 - \
-                    #          (A @ A @ x_0 + A @ B @ u_0 + B @ dyn_game.get_input_timestep_from_opt_var(u_all, 1))) >eps:
-                    #     warnings.warn("Something is wrong with the state evolution")
 
                     # Evolve state
                     x_0 = A @ x_0 + np.sum(B @ u_0, axis=0)

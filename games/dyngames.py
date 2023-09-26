@@ -350,6 +350,9 @@ class LQ:
                         break
                 else:
                     raise ValueError("[solve_open_loop_inf_hor_problem] the criterion has to be 'sassano' or 'freiling' ")
+        is_P_posdef = True
+        is_OL_stable = True
+        is_P_symmetric = True
         if err > eps_error:
             print("[solve_open_loop_inf_hor_problem] Could not find solution")
             is_solved = False
@@ -358,11 +361,15 @@ class LQ:
             for i in range(N):
                 if min(np.linalg.eigvalsh(P[i])) < 0:
                     warnings.warn("[solve_open_loop_inf_hor_problem] The open loop P is non-positive definite")
+                    is_P_posdef = False
+                if np.linalg.norm(P[i] - P[i].T)> eps_error:
+                    is_P_symmetric = False
             if max(np.abs(np.linalg.eigvals(A + np.sum(B @ K, axis=0)))) > 1.001:
                 warnings.warn("The infinite horizon OL-GNE has an unstable dynamics")
-        return P, K, is_solved
+                is_OL_stable = False
+        return P, K, is_solved, is_OL_stable, is_P_symmetric, is_P_posdef
 
-    def verify_ONE_is_affine_LQR(self, eps=10**(-5)):
+    def verify_ONE_is_affine_LQR(self, eps=10**(-8), verify_cost=True, integration_length = 100):
         '''
         Verify that the infinite horizon O-NE is the LQR for the affine system where the other agent's inputs is
         considered as a sequence of affine disturbances by checking eq. (4.5) of Monti 2023 for all i,
@@ -374,7 +381,7 @@ class LQ:
         with A_cl = (I+ \sum_j S_jP_j)^(-1)A
         and remove x(h) from the relations, as they should hold for all x.
         '''
-        P, K, is_solved = self.solve_open_loop_inf_hor_problem()
+        P, K, is_solved, _, _, _ = self.solve_open_loop_inf_hor_problem()
         P_LQR = np.zeros((self.N_agents, self.n_x, self.n_x))
         K_LQR = np.zeros((self.N_agents, self.n_u, self.n_x))
         I_x = np.eye(self.n_x)
@@ -386,12 +393,16 @@ class LQ:
         S = self.B @ np.linalg.inv(self.R) @ self.B.T3D()
         A_cl = self.A + np.sum(self.B @ K, axis=0)
         K_affine = np.zeros((self.N_agents, self.n_u, self.n_x))
+        K_test = np.zeros((self.N_agents, self.n_u, self.n_x))
+        P_bar = np.zeros((self.N_agents, self.n_x, self.n_x))
         is_condition_verified = [False for _ in range(self.N_agents)]
-        b = np.zeros((self.N_agents, 100, self.n_x, self.n_x))
-        w = np.zeros((self.N_agents, 200, self.n_x, self.n_x))
-        c = np.zeros((self.N_agents, 50, self.n_x, self.n_x))
+        b = np.zeros((self.N_agents, integration_length*2, self.n_x, self.n_x))
+        w = np.zeros((self.N_agents, integration_length*4, self.n_x, self.n_x))
+        c = np.zeros((self.N_agents, integration_length, self.n_x, self.n_x))
+        empirical_cost_to_go = multiagent_array(np.zeros((self.N_agents, self.n_x, self.n_x)))
         # b = np.zeros((self.N_agents, self.n_x, self.n_x))
         # b_next = np.zeros((self.N_agents, self.n_x, self.n_x))
+        is_ONE_and_affine_cost_to_go_equal = False
         if is_solved:
             for i in range(self.N_agents):
                 for k in range(w.shape[1]):
@@ -403,7 +414,17 @@ class LQ:
                         # Check if eq. (4.9) of [Monti '23] is satisfied
                         err = np.linalg.norm( b[i, k-1] - A_cl_i[i].T @ (b[i,k] + P_LQR[i] @ (np.sum(self.B @ K, axis=0) - self.B[i] @ K[i]) @ np.linalg.matrix_power(A_cl, k -1) ) )
                         if err > 10**(-5):
-                            raise RuntimeError("Something is wrong in computing the affine LQR")
+                            warnings.warn("Something is wrong in computing the affine LQR")
+                if verify_cost==True:
+                    for k in range(c.shape[1]):
+                        for h in range(k, b.shape[1]-1):
+                            c[i,k] = c[i,k] + 0.5 * (w[i,h].T @ P_LQR[i]@ w[i,h] + 2 * w[i,h].T @ b[i,h+1] - \
+                                 (P_LQR[i] @ w[i,h] + b[i,h+1]).T @ self.B[i] @ \
+                                     np.linalg.inv(self.R[i] + self.B[i].T @ P_LQR[i] @ self.B[i]) @ \
+                                        self.B[i].T @ (P_LQR[i] @ w[i,h] + b[i,h+1]) )
+                    for k in range(c.shape[1]):
+                        empirical_cost_to_go[i] = empirical_cost_to_go[i] + \
+                            0.5 * np.linalg.matrix_power(A_cl, k).T @ (self.Q[i] + self.K[i].T @ self.R[i] @ self.K[i] ) @ np.linalg.matrix_power(A_cl, k)
                 A_cl_Tinv = np.linalg.inv(A_cl_i[i].T)
                 K_affine[i] = - np.linalg.inv(self.R[i] + self.B[i].T @ P_LQR[i] @ self.B[i]) @ self.B[i].T @ (P_LQR[i] @ self.A + A_cl_Tinv @ b[i, 0])
                 # K_affine[i] = - np.linalg.inv(self.R[i] + self.B[i].T @ P_LQR[i] @ self.B[i]) @ self.B[i].T @ ((P_LQR[i] @ (self.A + w[i,0]) ) + b[i, 1])
@@ -411,7 +432,57 @@ class LQ:
                     is_condition_verified[i] = True
                 else:
                     is_condition_verified[i] = False
-        return all(is_condition_verified)
+            cost_to_go = multiagent_array(0.5*P_LQR + b[:, 0] + c[:, 0])
+            if np.linalg.norm((empirical_cost_to_go + empirical_cost_to_go.T3D()) - (cost_to_go + cost_to_go.T3D())) < eps:
+                is_ONE_and_affine_cost_to_go_equal = True
+            # for i in range(self.N_agents):
+            #     P_bar[i] = P_LQR[i] + .5*(b[i,0] + b[i,0].T)
+            #     K_test[i] = - np.linalg.inv(self.R[i] + self.B[i].T @ P_bar[i] @ self.B[i] ) @ \
+            #         self.B[i].T @ (P_LQR[i] + b[i,0]) @(self.A + np.sum(self.B @ self.K, axis=0) - self.B[i] @ self.K[i])
+        return all(is_condition_verified), is_ONE_and_affine_cost_to_go_equal
+
+    def solve_closed_form_MPC(self, T_hor, P):
+        '''
+        Reformulate the finite horizon problem with terminal cost
+        x(T)'P_LQR[i]x(T) + x(T)'b(T)
+        where b(T) = P_tilde x(T) and P = P_LQR + P_tilde
+        Returns stack of controllers K such that the MPC input is given by
+        u^*_0 = K @ x
+        by choosing P as solution of the OL-NE, this should coincide with the infinite-horizon K
+        '''
+
+        P_LQR = np.zeros((self.N_agents, self.n_x, self.n_x))
+        R_hat = np.zeros((self.N_agents, self.n_u * T_hor, self.n_u * T_hor))
+        Q_hat = np.zeros((self.N_agents, self.n_x * T_hor, self.n_x * T_hor))
+        S_last = np.zeros((self.N_agents, self.n_x, self.n_u * T_hor))
+        S_last[:] = self.S[:, -self.n_x:, :]
+        T_last = self.T[-self.n_x:, :]
+        I_x = np.eye(self.n_x)
+        for i in range(self.N_agents):
+            P_LQR[i] = scipy.linalg.solve_discrete_are(self.A, self.B[i], self.Q[i], self.R[i])
+            R_hat[i] = np.kron(np.eye(T_hor), self.R[i])
+            Q_hat[i] = block_diag(*(np.kron(np.eye(T_hor-1), self.Q[i]), P_LQR[i]))
+        P_tilde = P - P_LQR
+        '''
+        Define matrices D, E such that u^* solves
+        D u^* + E x_0
+        '''
+        D_blocks = [
+            [
+                self.S[i].T @ Q_hat[i] @ self.S[j] + S_last[i].T @ P_tilde[i] @ S_last[j]
+                for j in range(self.N_agents)
+            ]
+            for i in range(self.N_agents)
+        ]
+        D = block_diag(*[R_hat[i] for i in range(self.N_agents)]) + np.vstack([np.hstack(row) for row in D_blocks])
+        E = np.vstack( [self.S[i].T @ Q_hat[i] @ self.T + S_last[i].T @ P_tilde[i] @ T_last
+                            for i in range(self.N_agents)] )
+        K_closed_form = - np.linalg.inv(D) @ E
+        K_MPC = np.zeros((self.N_agents, self.n_u, self.n_x))
+        for i in range(self.N_agents):
+            # extract mapping from state to first input of the sequence
+            K_MPC[i] = K_closed_form[i * self.n_u * T_hor : i * self.n_u * T_hor + self.n_u  ,:]
+        return K_MPC
 
     def solve_closed_loop_inf_hor_problem(self, n_iter=1000, eps_error=10 ** (-6), method='lyap'):
         """
@@ -565,7 +636,8 @@ class LQ:
 
     def set_term_cost_to_inf_hor_sol(self, mode="CL", method='lyap', n_iter=10000, eps_error=10**(-6)):
         if mode=="OL":
-            self.P, self.K, _ = self.solve_open_loop_inf_hor_problem(n_iter=n_iter, eps_error=eps_error)
+            self.P, self.K, is_solved, is_OL_stable, is_P_symmetric, is_P_posdef = \
+                self.solve_open_loop_inf_hor_problem(n_iter=n_iter, eps_error=eps_error)
         elif mode=="CL":
             self.P, self.K = self.solve_closed_loop_inf_hor_problem(n_iter=n_iter,  method=method, eps_error=eps_error)
         else:
