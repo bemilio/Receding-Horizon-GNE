@@ -26,7 +26,7 @@ if load_results_from_single_file:
     f.close()
 else:
     # Load all files in a directory
-    directory = r"C:\Users\ebenenati\surfdrive - Emilio Benenati@surfdrive.surf.nl\TUDelft\Simulations\Receding_horizon_games\30_aug_23\Results"
+    directory = r"C:\Users\ebenenati\surfdrive - Emilio Benenati@surfdrive.surf.nl\TUDelft\Simulations\Receding_horizon_games\02_oct_23\Results"
     N_files = 0
     for filename in os.listdir(directory):
         if filename.find('.pkl')>=0:
@@ -35,22 +35,33 @@ else:
     for filename in os.listdir(directory):
         if filename.find('.pkl')>=0:
             f=open(directory+"\\"+filename, 'rb')
-            x_store_file, u_store_file, residual_store_file, u_pred_traj_store_file, x_pred_traj_store_file, u_shifted_traj_store_file, \
-                K_CL_store_file, K_OL_store_file, A_store_file, B_store_file, \
-                T_hor_to_test, N_agents_to_test, status_store_file, cost_store_file = pickle.load(f)
+            #               x_store, u_store, residual_store, u_pred_traj_store, x_pred_traj_store, u_shifted_traj_store,
+            #               K_CL_store, K_OL_store, A_store, B_store,
+            #               T_hor_to_test, N_agents_to_test,
+            #               cost_store, u_PMP_CL_store, u_PMP_OL_store, P_OL_store,
+            #               is_game_solved_store, is_ONE_solved_store, is_P_subspace_store,
+            #               is_subspace_stable_store, is_subspace_unique_store
+            # x_store, u_store, residual_store, u_pred_traj_store, u_shifted_traj_store,
+            # T_hor_to_test, N_agents_to_test, cost_store,
+            # is_game_solved_store, is_ONE_solved_store, is_P_subspace_store,
+            # is_subspace_stable_store, is_subspace_unique_store, is_ONE_equal_to_affine_LQR_store
+            x_store_file, u_store_file, residual_store_file, u_pred_traj_store_file, u_shifted_traj_store_file, \
+                T_hor_to_test, N_agents_to_test, cost_store_file,\
+                is_game_solved_file, is_ONE_solved_file, is_P_subspace_file,\
+                is_subspace_stable_file, is_subspace_unique_file, is_ONE_equal_to_affine_LQR_file = pickle.load(f)
             if N_tests == 0:
                 x_store = x_store_file
                 u_store = u_store_file
                 residual_store = residual_store_file
                 u_pred_traj_store = u_pred_traj_store_file
-                x_pred_traj_store = x_pred_traj_store_file
                 u_shifted_traj_store = u_shifted_traj_store_file
-                K_CL_store = K_CL_store_file
-                K_OL_store = K_OL_store_file
-                A_store = A_store_file
-                B_store = B_store_file
-                status_store = status_store_file
                 cost_store = cost_store_file
+                is_game_solved_store = is_game_solved_file
+                is_ONE_solved_store = is_ONE_solved_file
+                is_P_subspace_store = is_P_subspace_file
+                is_subspace_stable_store = is_subspace_stable_file
+                is_subspace_unique_store = is_subspace_unique_file
+                is_ONE_equal_to_affine_LQR_store = is_ONE_equal_to_affine_LQR_file
             else:
                 for T_hor_idx in range(len(T_hor_to_test)):
                     for N_agents_idx in range(len(N_agents_to_test)):
@@ -58,16 +69,16 @@ else:
                         u_store[T_hor_idx][N_agents_idx] = np.concatenate((u_store[T_hor_idx][N_agents_idx], u_store_file[T_hor_idx][N_agents_idx]), axis=0)
                         residual_store[T_hor_idx][N_agents_idx] = np.concatenate((residual_store[T_hor_idx][N_agents_idx], residual_store_file[T_hor_idx][N_agents_idx]), axis=0)
                         u_pred_traj_store[T_hor_idx][N_agents_idx] = np.concatenate((u_pred_traj_store[T_hor_idx][N_agents_idx], u_pred_traj_store_file[T_hor_idx][N_agents_idx]), axis=0)
-                        x_pred_traj_store[T_hor_idx][N_agents_idx] = np.concatenate((x_pred_traj_store[T_hor_idx][N_agents_idx], x_pred_traj_store_file[T_hor_idx][N_agents_idx]), axis=0)
                         u_shifted_traj_store[T_hor_idx][N_agents_idx] = np.concatenate((u_shifted_traj_store[T_hor_idx][N_agents_idx], u_shifted_traj_store_file[T_hor_idx][N_agents_idx]), axis=0)
-                        K_CL_store[T_hor_idx][N_agents_idx] = np.concatenate((K_CL_store[T_hor_idx][N_agents_idx], K_CL_store_file[T_hor_idx][N_agents_idx]), axis=0)
-                        K_OL_store[T_hor_idx][N_agents_idx] = np.concatenate((K_OL_store[T_hor_idx][N_agents_idx], K_OL_store_file[T_hor_idx][N_agents_idx]), axis=0)
-                        A_store[T_hor_idx][N_agents_idx] = np.concatenate((A_store[T_hor_idx][N_agents_idx], A_store_file[T_hor_idx][N_agents_idx]), axis=0)
-                        B_store[T_hor_idx][N_agents_idx] = np.concatenate((B_store[T_hor_idx][N_agents_idx], B_store_file[T_hor_idx][N_agents_idx]), axis=0)
-                        status_store[T_hor_idx][N_agents_idx] = np.concatenate((status_store[T_hor_idx][N_agents_idx], status_store_file[T_hor_idx][N_agents_idx]), axis=0)
                         cost_store[T_hor_idx][N_agents_idx] = np.concatenate((cost_store[T_hor_idx][N_agents_idx], cost_store_file[T_hor_idx][N_agents_idx]), axis=0)
+                        is_game_solved_store[T_hor_idx][N_agents_idx] = np.concatenate((is_game_solved_store[T_hor_idx][N_agents_idx], is_game_solved_file[T_hor_idx][N_agents_idx]), axis=0)
+                        is_ONE_solved_store[T_hor_idx][N_agents_idx] = np.concatenate((is_ONE_solved_store[T_hor_idx][N_agents_idx], is_ONE_solved_file[T_hor_idx][N_agents_idx]), axis=0)
+                        is_P_subspace_store[T_hor_idx][N_agents_idx] = np.concatenate((is_P_subspace_store[T_hor_idx][N_agents_idx], is_P_subspace_file[T_hor_idx][N_agents_idx]), axis=0)
+                        is_subspace_stable_store[T_hor_idx][N_agents_idx] = np.concatenate((is_subspace_stable_store[T_hor_idx][N_agents_idx], is_subspace_stable_file[T_hor_idx][N_agents_idx]), axis=0)
+                        is_subspace_unique_store[T_hor_idx][N_agents_idx] = np.concatenate((is_subspace_unique_store[T_hor_idx][N_agents_idx], is_subspace_unique_file[T_hor_idx][N_agents_idx]), axis=0)
+                        is_ONE_equal_to_affine_LQR_store[T_hor_idx][N_agents_idx] = np.concatenate((is_ONE_equal_to_affine_LQR_store[T_hor_idx][N_agents_idx], is_ONE_equal_to_affine_LQR_file[T_hor_idx][N_agents_idx]), axis=0)
             N_tests_file = x_store[0][0].shape[0]
-            N_tests = N_tests +N_tests_file
+            N_tests = N_tests + N_tests_file
 print("Files loaded, computing values to plot...")
 
 # u_pred_traj_store is [ [ np.zeros((N_random_tests, N_agents, T_hor * n_u, T_sim)) for N_agents in N_agents_to_test ] for T_hor in T_hor_to_test ]
@@ -85,13 +96,12 @@ eps = 10**(-4)
 
 diff_predicted_trajectory_and_shifted = np.zeros((N_random_tests, N_tested_T_hor, N_tested_N_agents))
 
-
 # Difference between predicted sequence and shifted sequence:
 # \max_t \| u_{: | t+1} -  [ u_{t+1: | t}, K x_{t+T | t} \|
 for i_T_hor in range(N_tested_T_hor):
     for i_N_agents in range(N_tested_N_agents):
         for i_random_test in range(N_random_tests):
-            if (status_store[i_T_hor][i_N_agents][i_random_test] == 'solved'):
+            if (is_game_solved_store[i_T_hor][i_N_agents][i_random_test]):
                 for t in range(T_sim-1):
                     diff_predicted_trajectory_and_shifted[i_random_test, i_T_hor, i_N_agents] = \
                         max(diff_predicted_trajectory_and_shifted[i_random_test, i_T_hor, i_N_agents],
@@ -104,72 +114,86 @@ diff_predicted_next_input_and_actual = np.zeros((N_random_tests, N_tested_T_hor,
 for i_T_hor in range(N_tested_T_hor):
     for i_N_agents in range(N_tested_N_agents):
         for i_random_test in range(N_random_tests):
-            if (status_store[i_T_hor][i_N_agents][i_random_test] == 'solved'):
+            if (is_game_solved_store[i_T_hor][i_N_agents][i_random_test]):
                 for t in range(T_sim-1):
                     diff_predicted_next_input_and_actual[i_random_test, i_T_hor, i_N_agents] = \
                         max(diff_predicted_next_input_and_actual[i_random_test, i_T_hor, i_N_agents],
                         norm(u_store[i_T_hor][i_N_agents][i_random_test, :, :, t+1 ] - \
                              u_pred_traj_store[i_T_hor][i_N_agents][i_random_test, :, n_u:2*n_u, t ] ) )
 
-# Difference between first input and input computed using K OL:
-diff_first_input_and_OL = np.zeros((N_random_tests, N_tested_T_hor, N_tested_N_agents))
+# verify that, if assumptions are satisfied, then ONE is found
+sassano_assumptions_are_verified = np.zeros(N_tested_T_hor * N_tested_N_agents * N_random_tests, dtype=bool)
+is_ONE_solved_vector = np.zeros(N_tested_T_hor * N_tested_N_agents * N_random_tests, dtype=bool)
+idx=0
 for i_T_hor in range(N_tested_T_hor):
     for i_N_agents in range(N_tested_N_agents):
         for i_random_test in range(N_random_tests):
-            if (status_store[i_T_hor][i_N_agents][i_random_test] == 'solved'):
-                for t in range(T_sim-1):
-                    K = K_OL_store[i_T_hor][i_N_agents][i_random_test,:]
-                    x = x_store[i_T_hor][i_N_agents][i_random_test, :, t ]
-                    diff_first_input_and_OL[i_random_test, i_T_hor, i_N_agents] = \
-                        max(diff_first_input_and_OL[i_random_test, i_T_hor, i_N_agents],
-                            norm(u_store[i_T_hor][i_N_agents][i_random_test, :, :, t+1 ] - K @ x ))
+            sassano_assumptions_are_verified[idx] = is_P_subspace_store[i_T_hor][i_N_agents][i_random_test] and \
+                                                    is_subspace_stable_store[i_T_hor][i_N_agents][i_random_test] and \
+                                                    is_subspace_unique_store[i_T_hor][i_N_agents][i_random_test]
+            idx = idx+1
+
+
+
+# Difference between first input and input computed using K OL:
+# diff_first_input_and_OL = np.zeros((N_random_tests, N_tested_T_hor, N_tested_N_agents))
+# for i_T_hor in range(N_tested_T_hor):
+#     for i_N_agents in range(N_tested_N_agents):
+#         for i_random_test in range(N_random_tests):
+#             if (status_store[i_T_hor][i_N_agents][i_random_test] == 'solved'):
+#                 for t in range(T_sim-1):
+#                     K = K_OL_store[i_T_hor][i_N_agents][i_random_test,:]
+#                     x = x_store[i_T_hor][i_N_agents][i_random_test, :, t ]
+#                     diff_first_input_and_OL[i_random_test, i_T_hor, i_N_agents] = \
+#                         max(diff_first_input_and_OL[i_random_test, i_T_hor, i_N_agents],
+#                             norm(u_store[i_T_hor][i_N_agents][i_random_test, :, :, t+1 ] - K @ x ))
 
 # Difference between last input and input computed using K OL:
-diff_last_input_and_OL = np.zeros((N_random_tests, N_tested_T_hor, N_tested_N_agents))
-for i_T_hor in range(N_tested_T_hor):
-    for i_N_agents in range(N_tested_N_agents):
-        for i_random_test in range(N_random_tests):
-            if (status_store[i_T_hor][i_N_agents][i_random_test] == 'solved'):
-                for t in range(T_sim-1):
-                    K = K_OL_store[i_T_hor][i_N_agents][i_random_test,:]
-                    x_second_last = x_pred_traj_store[i_T_hor][i_N_agents][i_random_test, -2*n_x:-n_x, t ]
-                    u_last = u_pred_traj_store[i_T_hor][i_N_agents][i_random_test, :, -n_u:, t ]
-                    diff_last_input_and_OL[i_random_test, i_T_hor, i_N_agents] = \
-                        max(diff_last_input_and_OL[i_random_test, i_T_hor, i_N_agents], norm(u_last - K @ x_second_last))
+# diff_last_input_and_OL = np.zeros((N_random_tests, N_tested_T_hor, N_tested_N_agents))
+# for i_T_hor in range(N_tested_T_hor):
+#     for i_N_agents in range(N_tested_N_agents):
+#         for i_random_test in range(N_random_tests):
+#             if (status_store[i_T_hor][i_N_agents][i_random_test] == 'solved'):
+#                 for t in range(T_sim-1):
+#                     K = K_OL_store[i_T_hor][i_N_agents][i_random_test,:]
+#                     x_second_last = x_pred_traj_store[i_T_hor][i_N_agents][i_random_test, -2*n_x:-n_x, t ]
+#                     u_last = u_pred_traj_store[i_T_hor][i_N_agents][i_random_test, :, -n_u:, t ]
+#                     diff_last_input_and_OL[i_random_test, i_T_hor, i_N_agents] = \
+#                         max(diff_last_input_and_OL[i_random_test, i_T_hor, i_N_agents], norm(u_last - K @ x_second_last))
 
 # Difference between first input and input computed using K CL:
 
-diff_first_input_and_CL = np.zeros((N_random_tests, N_tested_T_hor, N_tested_N_agents))
-for i_T_hor in range(N_tested_T_hor):
-    for i_N_agents in range(N_tested_N_agents):
-        for i_random_test in range(N_random_tests):
-            if (status_store[i_T_hor][i_N_agents][i_random_test] == 'solved'):
-                for t in range(T_sim-1):
-                    K = K_CL_store[i_T_hor][i_N_agents][i_random_test,:]
-                    x = x_store[i_T_hor][i_N_agents][i_random_test, :, t ]
-                    diff_first_input_and_CL[i_random_test, i_T_hor, i_N_agents] = \
-                        max(diff_first_input_and_CL[i_random_test, i_T_hor, i_N_agents],
-                            norm(u_store[i_T_hor][i_N_agents][i_random_test, :, :, t+1 ] - K @ x ))
+# diff_first_input_and_CL = np.zeros((N_random_tests, N_tested_T_hor, N_tested_N_agents))
+# for i_T_hor in range(N_tested_T_hor):
+#     for i_N_agents in range(N_tested_N_agents):
+#         for i_random_test in range(N_random_tests):
+#             if (status_store[i_T_hor][i_N_agents][i_random_test] == 'solved'):
+#                 for t in range(T_sim-1):
+#                     K = K_CL_store[i_T_hor][i_N_agents][i_random_test,:]
+#                     x = x_store[i_T_hor][i_N_agents][i_random_test, :, t ]
+#                     diff_first_input_and_CL[i_random_test, i_T_hor, i_N_agents] = \
+#                         max(diff_first_input_and_CL[i_random_test, i_T_hor, i_N_agents],
+#                             norm(u_store[i_T_hor][i_N_agents][i_random_test, :, :, t+1 ] - K @ x ))
 
 # Difference between last input and input computed using K CL:
-diff_last_input_and_CL = np.zeros((N_random_tests, N_tested_T_hor, N_tested_N_agents))
-for i_T_hor in range(N_tested_T_hor):
-    for i_N_agents in range(N_tested_N_agents):
-        for i_random_test in range(N_random_tests):
-            if (status_store[i_T_hor][i_N_agents][i_random_test] == 'solved'):
-                for t in range(T_sim-1):
-                    K = K_CL_store[i_T_hor][i_N_agents][i_random_test,:]
-                    x_second_last = x_pred_traj_store[i_T_hor][i_N_agents][i_random_test, -2*n_x:-n_x, t ]
-                    u_last = u_pred_traj_store[i_T_hor][i_N_agents][i_random_test, :, -n_u:, t ]
-                    diff_last_input_and_CL[i_random_test, i_T_hor, i_N_agents] = \
-                        max(diff_last_input_and_CL[i_random_test, i_T_hor, i_N_agents], norm(u_last - K @ x_second_last))
+# diff_last_input_and_CL = np.zeros((N_random_tests, N_tested_T_hor, N_tested_N_agents))
+# for i_T_hor in range(N_tested_T_hor):
+#     for i_N_agents in range(N_tested_N_agents):
+#         for i_random_test in range(N_random_tests):
+#             if (status_store[i_T_hor][i_N_agents][i_random_test] == 'solved'):
+#                 for t in range(T_sim-1):
+#                     K = K_CL_store[i_T_hor][i_N_agents][i_random_test,:]
+#                     x_second_last = x_pred_traj_store[i_T_hor][i_N_agents][i_random_test, -2*n_x:-n_x, t ]
+#                     u_last = u_pred_traj_store[i_T_hor][i_N_agents][i_random_test, :, -n_u:, t ]
+#                     diff_last_input_and_CL[i_random_test, i_T_hor, i_N_agents] = \
+#                         max(diff_last_input_and_CL[i_random_test, i_T_hor, i_N_agents], norm(u_last - K @ x_second_last))
 
 # Cumulative cost over time:
 cumulative_cost = np.zeros((N_random_tests, N_tested_T_hor, N_tested_N_agents, T_sim))
 for i_T_hor in range(N_tested_T_hor):
     for i_N_agents in range(N_tested_N_agents):
         for i_random_test in range(N_random_tests):
-            if (status_store[i_T_hor][i_N_agents][i_random_test] == 'solved'):
+            if (is_game_solved_store[i_T_hor][i_N_agents][i_random_test]):
                 for t in range(T_sim-1):
                     cumulative_cost[i_random_test, i_T_hor, i_N_agents, t] = np.sum(cost_store[i_T_hor][i_N_agents], axis=1)[i_random_test, t]
 
@@ -186,21 +210,21 @@ ax[1].set(xlabel=r'horizon' )
 # ax[1].set_xticks(np.arange(len(T_hor_to_test)))
 # ax[1].set_xticklabels(T_hor_to_test)
 
-ax[2].boxplot(np.amax(diff_first_input_and_OL, axis = 2))
-ax[2].set(ylabel=r'$\max_t \| u_{t | t} - K^{\mathrm{OL}} x_{t} \| $' )
-ax[2].set(xlabel=r'horizon' )
-
-ax[3].boxplot(np.amax(diff_last_input_and_OL, axis = 2))
-ax[3].set(ylabel=r'$\max_t \| u_{t+T | t} - K^{\mathrm{OL}} x_{t+T|t} \| $' )
-ax[3].set(xlabel=r'horizon' )
-
-ax[4].boxplot(np.amax(diff_first_input_and_CL, axis = 2))
-ax[4].set(ylabel=r'$\max_t \| u_{t | t} - K^{\mathrm{CL}} x_{t} \| $' )
-ax[4].set(xlabel=r'horizon' )
-
-ax[5].boxplot(np.amax(diff_last_input_and_CL, axis = 2))
-ax[5].set(ylabel=r'$\max_t \| u_{t+T | t} - K^{\mathrm{CL}} x_{t+T|t} \| $' )
-ax[5].set(xlabel=r'horizon' )
+# ax[2].boxplot(np.amax(diff_first_input_and_OL, axis = 2))
+# ax[2].set(ylabel=r'$\max_t \| u_{t | t} - K^{\mathrm{OL}} x_{t} \| $' )
+# ax[2].set(xlabel=r'horizon' )
+#
+# ax[3].boxplot(np.amax(diff_last_input_and_OL, axis = 2))
+# ax[3].set(ylabel=r'$\max_t \| u_{t+T | t} - K^{\mathrm{OL}} x_{t+T|t} \| $' )
+# ax[3].set(xlabel=r'horizon' )
+#
+# ax[4].boxplot(np.amax(diff_first_input_and_CL, axis = 2))
+# ax[4].set(ylabel=r'$\max_t \| u_{t | t} - K^{\mathrm{CL}} x_{t} \| $' )
+# ax[4].set(xlabel=r'horizon' )
+#
+# ax[5].boxplot(np.amax(diff_last_input_and_CL, axis = 2))
+# ax[5].set(ylabel=r'$\max_t \| u_{t+T | t} - K^{\mathrm{CL}} x_{t+T|t} \| $' )
+# ax[5].set(xlabel=r'horizon' )
 
 # ax[1].set_xticks(np.arange(len(T_hor_to_test)))
 ax[2].set_xticks(range(1,N_tested_T_hor+1),T_hor_to_test)

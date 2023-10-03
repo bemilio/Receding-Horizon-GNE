@@ -126,6 +126,8 @@ class LQ:
         self.S, self.T = get_multiagent_prediction_model(A, B, T_hor)
         # J_i = .5 u'W_iu + u'G_ix_0 + .5 x_0'H_ix_0
         self.W, self.G, self.H = self.define_cost_functions()
+        # Generate matrices such that D u + E x_0 = 0 solves exactly the unconstrained finite horizon problem
+        self.D, self.E = self.compute_MPC_optimality_conditions(T_hor, self.P)
         # Generate constraints
         self.C_u_loc, self.d_u_loc = self.generate_input_constr(C_u_loc, d_u_loc)
         self.C_u_sh, self.d_u_sh = self.generate_input_constr(C_u_sh, d_u_sh)
@@ -164,15 +166,26 @@ class LQ:
         T_hor = 2
         return A, B, Q, R, P, C_x, d_x, C_u_loc, d_u_loc, C_u_sh, d_u_sh, T_hor
 
-    def generate_game_from_initial_state(self, x_0):
-        Q = self.W
-        # Obtain linear part of the cost from x_0. Note that the mapping x_0->cost wants x_0 = col_i(x_0^i),
-        # while the mapping to the affine part constraints is agent-wise, that is, it only requires x_0^i
-        q = self.G @ x_0  # batch mult
-        h = x_0.T @ self.H @ x_0 # affine part of the cost
-        C = np.concatenate((self.C_u_sh, self.C_x_sh), axis=1)
-        d = np.concatenate((self.d_u_sh, self.D_x_sh @ x_0 + self.d_x_sh), axis=1)
-        return staticgames.LinearQuadratic(Q, q, h, self.C_u_loc, self.d_u_loc, self.C_eq, self.d_eq, C, d)
+    def generate_game_from_initial_state(self, x_0, method="VI"):
+        if method=="LQ game":
+            Q = self.W
+            # Obtain linear part of the cost from x_0. Note that the mapping x_0->cost wants x_0 = col_i(x_0^i),
+            # while the mapping to the affine part constraints is agent-wise, that is, it only requires x_0^i
+            q = self.G @ x_0  # batch mult
+            h = x_0.T @ self.H @ x_0 # affine part of the cost
+            C = np.concatenate((self.C_u_sh, self.C_x_sh), axis=1)
+            d = np.concatenate((self.d_u_sh, self.D_x_sh @ x_0 + self.d_x_sh), axis=1)
+            return staticgames.LinearQuadratic(Q, q, h, self.C_u_loc, self.d_u_loc, self.C_eq, self.d_eq, C, d)
+        elif method == "VI":
+            n_opt_var = self.D.shape[1]//self.N_agents
+            F = [(lambda x, i=i:
+                  self.D[i*n_opt_var:(i+1)*n_opt_var,:] @ x + self.E[i*n_opt_var:(i+1)*n_opt_var,:] @ x_0)
+                 for i in range(self.N_agents)] #i=i is necessary here!
+            C = np.concatenate((self.C_u_sh, self.C_x_sh), axis=1)
+            d = np.concatenate((self.d_u_sh, self.D_x_sh @ x_0 + self.d_x_sh), axis=1)
+            return staticgames.GenericVI(F, n_opt_var, self.C_u_loc, self.d_u_loc, self.C_eq, self.d_eq, C, d )
+        else:
+            raise ValueError("[generate_game_from_initial_state] method needs to be 'LQ game' or 'VI' ")
 
     def define_cost_functions(self):
         """
@@ -369,7 +382,39 @@ class LQ:
                 is_OL_stable = False
         return P, K, is_solved, is_OL_stable, is_P_symmetric, is_P_posdef
 
-    def verify_ONE_is_affine_LQR(self, eps=10**(-8), verify_cost=True, integration_length = 100):
+    def compute_ONE_terminal_cost(self, n_iter=10000, eps_error=10**(-7), integration_length=100):
+        P, K, is_solved, _, _, _ = self.solve_open_loop_inf_hor_problem(n_iter=n_iter, eps_error=eps_error)
+        P_LQR = np.zeros((self.N_agents, self.n_x, self.n_x))
+        K_LQR = np.zeros((self.N_agents, self.n_u, self.n_x))
+        I_x = np.eye(self.n_x)
+        A_cl_i = np.zeros((self.N_agents, self.n_x, self.n_x))
+        for i in range(self.N_agents):
+            P_LQR[i] = scipy.linalg.solve_discrete_are(self.A, self.B[i], self.Q[i], self.R[i])
+            K_LQR[i] = - np.linalg.inv(self.B[i].T @ P_LQR[i] @ self.B[i] + self.R[i]) @ self.B[i].T @ P_LQR[i] @ self.A
+            A_cl_i[i] = (self.A.T @ (
+                        I_x - self.B[i] @ np.linalg.inv(self.R[i] + self.B[i].T @ P_LQR[i] @ self.B[i]) @ self.B[i].T @
+                        P_LQR[i]).T).T
+        A_cl = self.A + np.sum(self.B @ K, axis=0)
+        b = np.zeros((self.N_agents, integration_length * 2, self.n_x, self.n_x))
+        w = np.zeros((self.N_agents, integration_length * 4, self.n_x, self.n_x))
+        c = np.zeros((self.N_agents, integration_length, self.n_x, self.n_x))
+        if is_solved:
+            for i in range(self.N_agents):
+                for k in range(w.shape[1]):
+                    w[i, k] = (np.sum(self.B @ K, axis=0) - self.B[i] @ K[i]) @ np.linalg.matrix_power(A_cl, k)
+                for k in range(b.shape[1]):
+                    for h in range(k, w.shape[1]):
+                        b[i, k] = b[i, k] + np.linalg.matrix_power(A_cl_i[i].T, h - k + 1) @ P_LQR[i] @ w[i, h]
+                for k in range(c.shape[1]):
+                    for h in range(k, b.shape[1]-1):
+                        c[i,k] = c[i,k] + 0.5 * (w[i,h].T @ P_LQR[i]@ w[i,h] + 2 * w[i,h].T @ b[i,h+1] - \
+                             (P_LQR[i] @ w[i,h] + b[i,h+1]).T @ self.B[i] @ \
+                                 np.linalg.inv(self.R[i] + self.B[i].T @ P_LQR[i] @ self.B[i]) @ \
+                                    self.B[i].T @ (P_LQR[i] @ w[i,h] + b[i,h+1]) )
+        P_tilde = P - P_LQR
+        return is_solved, P_LQR, P_tilde, K, c[:, 0]
+
+    def verify_ONE_is_affine_LQR(self, eps=10**(-7), verify_cost=True, integration_length = 100):
         '''
         Verify that the infinite horizon O-NE is the LQR for the affine system where the other agent's inputs is
         considered as a sequence of affine disturbances by checking eq. (4.5) of Monti 2023 for all i,
@@ -381,76 +426,40 @@ class LQ:
         with A_cl = (I+ \sum_j S_jP_j)^(-1)A
         and remove x(h) from the relations, as they should hold for all x.
         '''
-        P, K, is_solved, _, _, _ = self.solve_open_loop_inf_hor_problem()
-        P_LQR = np.zeros((self.N_agents, self.n_x, self.n_x))
-        K_LQR = np.zeros((self.N_agents, self.n_u, self.n_x))
-        I_x = np.eye(self.n_x)
         A_cl_i = np.zeros((self.N_agents, self.n_x, self.n_x))
-        for i in range(self.N_agents):
-            P_LQR[i] = scipy.linalg.solve_discrete_are(self.A, self.B[i], self.Q[i], self.R[i])
-            K_LQR[i] = - np.linalg.inv(self.B[i].T @ P_LQR[i] @ self.B[i] + self.R[i]) @ self.B[i].T @ P_LQR[i] @ self.A
-            A_cl_i[i] = (self.A.T @ (I_x -  self.B[i] @ np.linalg.inv(self.R[i] + self.B[i].T @ P_LQR[i] @ self.B[i]) @ self.B[i].T @ P_LQR[i]).T).T
-        S = self.B @ np.linalg.inv(self.R) @ self.B.T3D()
+        I_x = np.eye(self.n_x)
+        is_solved,P_LQR, P_tilde, K, C = self.compute_ONE_terminal_cost(integration_length=integration_length)
         A_cl = self.A + np.sum(self.B @ K, axis=0)
         K_affine = np.zeros((self.N_agents, self.n_u, self.n_x))
-        K_test = np.zeros((self.N_agents, self.n_u, self.n_x))
-        P_bar = np.zeros((self.N_agents, self.n_x, self.n_x))
         is_condition_verified = [False for _ in range(self.N_agents)]
-        b = np.zeros((self.N_agents, integration_length*2, self.n_x, self.n_x))
-        w = np.zeros((self.N_agents, integration_length*4, self.n_x, self.n_x))
-        c = np.zeros((self.N_agents, integration_length, self.n_x, self.n_x))
         empirical_cost_to_go = multiagent_array(np.zeros((self.N_agents, self.n_x, self.n_x)))
-        # b = np.zeros((self.N_agents, self.n_x, self.n_x))
-        # b_next = np.zeros((self.N_agents, self.n_x, self.n_x))
         is_ONE_and_affine_cost_to_go_equal = False
         if is_solved:
             for i in range(self.N_agents):
-                for k in range(w.shape[1]):
-                    w[i, k] = (np.sum(self.B @ K, axis=0) - self.B[i] @ K[i]) @ np.linalg.matrix_power(A_cl, k)
-                for k in range(b.shape[1]):
-                    for h in range(k, w.shape[1]):
-                        b[i, k] = b[i, k] + np.linalg.matrix_power(A_cl_i[i].T, h - k + 1) @ P_LQR[i] @ w[i,h]
-                    if k>0:
-                        # Check if eq. (4.9) of [Monti '23] is satisfied
-                        err = np.linalg.norm( b[i, k-1] - A_cl_i[i].T @ (b[i,k] + P_LQR[i] @ (np.sum(self.B @ K, axis=0) - self.B[i] @ K[i]) @ np.linalg.matrix_power(A_cl, k -1) ) )
-                        if err > 10**(-5):
-                            warnings.warn("Something is wrong in computing the affine LQR")
-                if verify_cost==True:
-                    for k in range(c.shape[1]):
-                        for h in range(k, b.shape[1]-1):
-                            c[i,k] = c[i,k] + 0.5 * (w[i,h].T @ P_LQR[i]@ w[i,h] + 2 * w[i,h].T @ b[i,h+1] - \
-                                 (P_LQR[i] @ w[i,h] + b[i,h+1]).T @ self.B[i] @ \
-                                     np.linalg.inv(self.R[i] + self.B[i].T @ P_LQR[i] @ self.B[i]) @ \
-                                        self.B[i].T @ (P_LQR[i] @ w[i,h] + b[i,h+1]) )
-                    for k in range(c.shape[1]):
-                        empirical_cost_to_go[i] = empirical_cost_to_go[i] + \
-                            0.5 * np.linalg.matrix_power(A_cl, k).T @ (self.Q[i] + self.K[i].T @ self.R[i] @ self.K[i] ) @ np.linalg.matrix_power(A_cl, k)
+                A_cl_i[i] = (self.A.T @ (I_x - self.B[i] @ np.linalg.inv(self.R[i] + self.B[i].T @ P_LQR[i] @ self.B[i]) @ self.B[i].T @ P_LQR[i]).T).T
+                for k in range(integration_length):
+                    empirical_cost_to_go[i] = empirical_cost_to_go[i] + \
+                        0.5 * np.linalg.matrix_power(A_cl, k).T @ (self.Q[i] + self.K[i].T @ self.R[i] @ self.K[i] ) @ np.linalg.matrix_power(A_cl, k)
                 A_cl_Tinv = np.linalg.inv(A_cl_i[i].T)
-                K_affine[i] = - np.linalg.inv(self.R[i] + self.B[i].T @ P_LQR[i] @ self.B[i]) @ self.B[i].T @ (P_LQR[i] @ self.A + A_cl_Tinv @ b[i, 0])
-                # K_affine[i] = - np.linalg.inv(self.R[i] + self.B[i].T @ P_LQR[i] @ self.B[i]) @ self.B[i].T @ ((P_LQR[i] @ (self.A + w[i,0]) ) + b[i, 1])
-                if np.linalg.norm(K_affine[i] - K[i]) < eps and np.linalg.norm(P[i] - P_LQR[i] - b[i, 0]) < eps:
+                K_affine[i] = - np.linalg.inv(self.R[i] + self.B[i].T @ P_LQR[i] @ self.B[i]) @ self.B[i].T @ (P_LQR[i] @ self.A + A_cl_Tinv @ P_tilde[i])
+                if np.linalg.norm(K_affine[i] - K[i]) < eps:
                     is_condition_verified[i] = True
                 else:
                     is_condition_verified[i] = False
-            cost_to_go = multiagent_array(0.5*P_LQR + b[:, 0] + c[:, 0])
+            cost_to_go = multiagent_array(0.5*P_LQR + P_tilde + C)
             if np.linalg.norm((empirical_cost_to_go + empirical_cost_to_go.T3D()) - (cost_to_go + cost_to_go.T3D())) < eps:
                 is_ONE_and_affine_cost_to_go_equal = True
-            # for i in range(self.N_agents):
-            #     P_bar[i] = P_LQR[i] + .5*(b[i,0] + b[i,0].T)
-            #     K_test[i] = - np.linalg.inv(self.R[i] + self.B[i].T @ P_bar[i] @ self.B[i] ) @ \
-            #         self.B[i].T @ (P_LQR[i] + b[i,0]) @(self.A + np.sum(self.B @ self.K, axis=0) - self.B[i] @ self.K[i])
         return all(is_condition_verified), is_ONE_and_affine_cost_to_go_equal
 
-    def solve_closed_form_MPC(self, T_hor, P):
+    def compute_MPC_optimality_conditions(self, T_hor, P):
         '''
-        Reformulate the finite horizon problem with terminal cost
+        Formulate for each agent the finite horizon optimal control problem with terminal cost
         x(T)'P_LQR[i]x(T) + x(T)'b(T)
-        where b(T) = P_tilde x(T) and P = P_LQR + P_tilde
-        Returns stack of controllers K such that the MPC input is given by
-        u^*_0 = K @ x
-        by choosing P as solution of the OL-NE, this should coincide with the infinite-horizon K
+        where b(T) = P_tilde x(T) and P = P_LQR + P_tilde.
+        This function returns D, E such that the solution u^* of
+        D u^* - E x_0 = 0
+        is for each agent the optimal control given the other agent's inputs
         '''
-
         P_LQR = np.zeros((self.N_agents, self.n_x, self.n_x))
         R_hat = np.zeros((self.N_agents, self.n_u * T_hor, self.n_u * T_hor))
         Q_hat = np.zeros((self.N_agents, self.n_x * T_hor, self.n_x * T_hor))
@@ -461,7 +470,7 @@ class LQ:
         for i in range(self.N_agents):
             P_LQR[i] = scipy.linalg.solve_discrete_are(self.A, self.B[i], self.Q[i], self.R[i])
             R_hat[i] = np.kron(np.eye(T_hor), self.R[i])
-            Q_hat[i] = block_diag(*(np.kron(np.eye(T_hor-1), self.Q[i]), P_LQR[i]))
+            Q_hat[i] = block_diag(*(np.kron(np.eye(T_hor - 1), self.Q[i]), P_LQR[i]))
         P_tilde = P - P_LQR
         '''
         Define matrices D, E such that u^* solves
@@ -475,13 +484,26 @@ class LQ:
             for i in range(self.N_agents)
         ]
         D = block_diag(*[R_hat[i] for i in range(self.N_agents)]) + np.vstack([np.hstack(row) for row in D_blocks])
-        E = np.vstack( [self.S[i].T @ Q_hat[i] @ self.T + S_last[i].T @ P_tilde[i] @ T_last
-                            for i in range(self.N_agents)] )
+        E = np.vstack([self.S[i].T @ Q_hat[i] @ self.T + S_last[i].T @ P_tilde[i] @ T_last
+                       for i in range(self.N_agents)])
+        return D, E
+
+    def solve_closed_form_MPC(self, T_hor, P):
+        '''
+        Reformulate the finite horizon problem with terminal cost
+        x(T)'P_LQR[i]x(T) + x(T)'b(T)
+        where b(T) = P_tilde x(T) and P = P_LQR + P_tilde
+        Returns stack of controllers K such that the MPC input is given by
+        u^*_0 = K @ x
+        by choosing P as solution of the OL-NE, this should coincide with the infinite-horizon K
+        '''
+
+        D, E = self.compute_MPC_optimality_conditions(T_hor, P)
         K_closed_form = - np.linalg.inv(D) @ E
         K_MPC = np.zeros((self.N_agents, self.n_u, self.n_x))
         for i in range(self.N_agents):
             # extract mapping from state to first input of the sequence
-            K_MPC[i] = K_closed_form[i * self.n_u * T_hor : i * self.n_u * T_hor + self.n_u  ,:]
+            K_MPC[i] = K_closed_form[i * self.n_u * T_hor : i * self.n_u * T_hor + self.n_u ,:]
         return K_MPC
 
     def solve_closed_loop_inf_hor_problem(self, n_iter=1000, eps_error=10 ** (-6), method='lyap'):
@@ -636,15 +658,29 @@ class LQ:
 
     def set_term_cost_to_inf_hor_sol(self, mode="CL", method='lyap', n_iter=10000, eps_error=10**(-6)):
         if mode=="OL":
-            self.P, self.K, is_solved, is_OL_stable, is_P_symmetric, is_P_posdef = \
-                self.solve_open_loop_inf_hor_problem(n_iter=n_iter, eps_error=eps_error)
+            is_solved, self.P_LQR, self.P_tilde, self.K, self.c = self.compute_ONE_terminal_cost(integration_length=100)
+            # self.P, self.K, is_solved, is_OL_stable, is_P_symmetric, is_P_posdef = \
+            #     self.solve_open_loop_inf_hor_problem(n_iter=n_iter, eps_error=eps_error)
+            self.P = self.P_LQR + self.P_tilde
         elif mode=="CL":
             self.P, self.K = self.solve_closed_loop_inf_hor_problem(n_iter=n_iter,  method=method, eps_error=eps_error)
         else:
             raise ValueError("[dyngames::LQ::set_term_cost_to_inf_hor_sol] mode needs to be either 'OL' or 'CL' ")
         # Re-create cost functions with the new terminal cost
         self.W, self.G, self.H = self.define_cost_functions()
+        self.D, self.E = self.compute_MPC_optimality_conditions(self.T_hor, self.P)
 
+    def evaluate_cost(self, u, x_0):
+        x_all = np.vstack((x_0, self.T @ x_0 + np.sum(self.S @ u, axis=0)))
+        x_last = x_all[-self.n_x:, :]
+        cost = np.zeros((self.N_agents, 1))
+        for i in range(self.N_agents):
+            for t in range(self.T_hor):
+                cost[i] = cost[i] + \
+                    .5* u[i, t * self.n_u:(t+1) * self.n_u,:].T @ self.R[i] @ u[i, t * self.n_u:(t+1) * self.n_u,:] + \
+                    .5 * x_all[ t * self.n_x: (t+1) * self.n_x,:].T @ self.Q[i] @ x_all[ t * self.n_x: (t+1) * self.n_x,:]
+            cost[i] = cost[i] + x_last.T @ (.5 * self.P_LQR[i] + self.P_tilde[i] + self.c[i] ) @ x_last
+        return cost
     @staticmethod
     def generate_random_game(N_agents, n_states, n_inputs):
         # A sufficient condition for the game to be monotone is Q_i=I for all i
