@@ -12,7 +12,7 @@ import sys
 if __name__ == '__main__':
     logging.basicConfig(filename='log.txt', filemode='w',level=logging.DEBUG)
     if len(sys.argv) < 2:
-        seed = 2
+        seed = 1
         job_id=0
     else:
         seed=int(sys.argv[1])
@@ -21,11 +21,11 @@ if __name__ == '__main__':
     logging.info("Random seed set to  " + str(seed))
     np.random.seed(seed)
     N_it_per_residual_computation = 10
-    N_agents_to_test = [3]
-    N_random_tests = 1
+    N_agents_to_test = [4]
+    N_random_tests = 300
 
     # parameters
-    N_iter = 10**6
+    N_iter = 10
     n_x = 3
     n_u = 2
     T_hor_to_test = [2, 4, 6]
@@ -52,15 +52,16 @@ if __name__ == '__main__':
     B_store = [ [ np.zeros((N_random_tests, N_agents, n_x, n_u)) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
     is_P_symmetric_store = [[ [False for _ in range(N_random_tests)]  for _ in N_agents_to_test] for _ in T_hor_to_test]
     is_P_posdef_store = [[ [False for _ in range(N_random_tests)]  for _ in N_agents_to_test] for _ in T_hor_to_test]
-    is_K_stable_store = [[ [False for _ in range(N_random_tests)]  for _ in N_agents_to_test] for _ in T_hor_to_test]
+    max_ONE_eigval_store = [[ np.zeros((N_random_tests), dtype=np.float32)  for _ in N_agents_to_test] for _ in T_hor_to_test]
     is_ONE_and_affine_cost_to_go_equal_store = [[ [False for _ in range(N_random_tests)]  for _ in N_agents_to_test] for _ in T_hor_to_test]
     # is_fin_hor_input_equal_to_inf_hor_store = [[ [False for _ in range(N_random_tests)]  for _ in N_agents_to_test] for _ in T_hor_to_test]
-    is_P_subspace_store = [[ [False for _ in range(N_random_tests)]  for _ in N_agents_to_test] for _ in T_hor_to_test]
-    is_subspace_stable_store = [[ [False for _ in range(N_random_tests)]  for _ in N_agents_to_test] for _ in T_hor_to_test]
+    P_subspace_error_store = [ [ np.zeros((N_random_tests)) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
+    max_subspace_eigval_store = [ [ np.zeros((N_random_tests)) for N_agents in N_agents_to_test ] for _ in T_hor_to_test ]
     is_subspace_unique_store = [[ [False for _ in range(N_random_tests)]  for _ in N_agents_to_test] for _ in T_hor_to_test]
     is_game_solved_store = [[ [ False for _ in range(N_random_tests)] for _ in N_agents_to_test] for _ in T_hor_to_test]
     is_ONE_solved_store = [[ [ False for _ in range(N_random_tests)] for _ in N_agents_to_test] for _ in T_hor_to_test]
-    is_ONE_equal_to_affine_LQR_store = [[ [ False for _ in range(N_random_tests)] for _ in N_agents_to_test] for _ in T_hor_to_test]
+    difference_affine_LQR_and_ONE_controller_store = [[ np.zeros((N_random_tests), dtype=np.float32)  for _ in N_agents_to_test] for _ in T_hor_to_test]
+    difference_empirical_and_expected_cost_to_go_store = [[ np.zeros((N_random_tests), dtype=np.float32)  for _ in N_agents_to_test] for _ in T_hor_to_test]
     test_counter = 0
 
     for test in range(N_random_tests):
@@ -68,14 +69,23 @@ if __name__ == '__main__':
             ##########################################
             #        Test case creation              #
             #########################################
-            A, B, Q, R = dyngames.LQ.generate_random_game(N_agents, n_x, n_u)
+            are_assumptions_satisfied = False
+            attempts_counter = 0
             C_x = np.vstack((np.eye(n_x), -np.eye(n_x)))
             C_u_loc = np.stack([np.vstack((np.eye(n_u), -np.eye(n_u))) for _ in range(N_agents)], axis=0)
-            d_x = 100 * np.ones((2 * n_x, 1))
-            d_u_loc = 100 * np.ones((N_agents, 2 * n_u, 1))
+            d_x = 2 * np.ones((2 * n_x, 1))
+            d_u_loc = 1 * np.ones((N_agents, 2 * n_u, 1))
             C_u_sh = np.zeros((N_agents, 1, n_u))
             d_u_sh = np.zeros((N_agents, 1, 1))
-            P = Q
+            while ~are_assumptions_satisfied:
+                A, B, Q, R = dyngames.LQ.generate_random_game(N_agents, n_x, n_u)
+                P = Q
+                # re-generate until all conditions are satisfied
+                dyn_game = dyngames.LQ(A, B, Q, R, P, C_x, d_x, C_u_loc, d_u_loc, C_u_sh, d_u_sh, 1)
+                P_OL, K_OL, is_OL_solved, max_ONE_eigval, is_P_symmetric, is_P_posdef = dyn_game.solve_open_loop_inf_hor_problem()
+                P_subspace_error, max_subspace_eigval, is_subspace_unique = dyn_game.check_P_is_H_graph_invariant_subspace(P_OL, K_OL)
+                are_assumptions_satisfied = P_subspace_error<10**(-6) and max_subspace_eigval<1 and is_subspace_unique
+                attempts_counter = attempts_counter +1
             for T_hor in T_hor_to_test:
                 test_counter = test_counter + 1
                 ##########################################
@@ -94,25 +104,28 @@ if __name__ == '__main__':
                 ########################################
                 ####   Compute inf-horizon solution ####
                 ########################################
-                P_CL, K_CL = dyn_game.solve_closed_loop_inf_hor_problem()
-                P_OL, K_OL, is_OL_solved, is_OL_stable, is_P_symmetric, is_P_posdef = dyn_game.solve_open_loop_inf_hor_problem()
+
+                # P_CL, K_CL = dyn_game.solve_closed_loop_inf_hor_problem()
+                # P_OL, K_OL, is_OL_solved, max_ONE_eigval, is_P_symmetric, is_P_posdef = dyn_game.solve_open_loop_inf_hor_problem()
                 is_ONE_solved_store[T_hor_to_test.index((T_hor))][N_agents_to_test.index(N_agents)][test] = is_OL_solved
                 is_P_symmetric_store[T_hor_to_test.index((T_hor))][N_agents_to_test.index(N_agents)][test] = is_P_symmetric
                 is_P_posdef_store[T_hor_to_test.index((T_hor))][N_agents_to_test.index(N_agents)][test] = is_P_posdef
-                is_K_stable_store[T_hor_to_test.index((T_hor))][N_agents_to_test.index(N_agents)][test] = is_OL_stable
+                max_ONE_eigval_store[T_hor_to_test.index((T_hor))][N_agents_to_test.index(N_agents)][test] = max_ONE_eigval
                 # Verify assumption 4.9 [Monti '23]
-                is_P_subspace, is_subspace_stable, is_subspace_unique = dyn_game.check_P_is_H_graph_invariant_subspace(P_OL)
-                is_P_subspace_store[T_hor_to_test.index((T_hor))][N_agents_to_test.index(N_agents)][test] = is_P_subspace
-                is_subspace_stable_store[T_hor_to_test.index((T_hor))][N_agents_to_test.index(N_agents)][test] = is_subspace_stable
+                # P_subspace_error, max_subspace_eigval, is_subspace_unique = dyn_game.check_P_is_H_graph_invariant_subspace(P_OL, K_OL)
+                max_subspace_eigval_store[T_hor_to_test.index((T_hor))][N_agents_to_test.index(N_agents)][test] = max_subspace_eigval
+                P_subspace_error_store[T_hor_to_test.index((T_hor))][N_agents_to_test.index(N_agents)][test] = P_subspace_error
+                # is_P_subspace_store[T_hor_to_test.index((T_hor))][N_agents_to_test.index(N_agents)][test] = is_P_subspace
+                # is_subspace_stable_store[T_hor_to_test.index((T_hor))][N_agents_to_test.index(N_agents)][test] = is_subspace_stable
                 is_subspace_unique_store[T_hor_to_test.index((T_hor))][N_agents_to_test.index(N_agents)][test] = is_subspace_unique
                 # Store inf-horizon solution
                 # K_CL_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)] [test, :] = K_CL
                 K_OL_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :] = K_OL
                 P_OL_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :] = P_OL
 
-                is_ONE_equal_to_affine_LQR, is_ONE_and_affine_cost_to_go_equal = dyn_game.verify_ONE_is_affine_LQR()
-                is_ONE_equal_to_affine_LQR_store[T_hor_to_test.index((T_hor))][N_agents_to_test.index(N_agents)][test] = is_ONE_equal_to_affine_LQR
-                is_ONE_and_affine_cost_to_go_equal_store[T_hor_to_test.index((T_hor))][N_agents_to_test.index(N_agents)][test] = is_ONE_and_affine_cost_to_go_equal_store
+                difference_affine_LQR_and_ONE_controller, difference_empirical_and_expected_cost_to_go = dyn_game.verify_ONE_is_affine_LQR()
+                difference_affine_LQR_and_ONE_controller_store[T_hor_to_test.index((T_hor))][N_agents_to_test.index(N_agents)][test] = difference_affine_LQR_and_ONE_controller
+                difference_empirical_and_expected_cost_to_go_store[T_hor_to_test.index((T_hor))][N_agents_to_test.index(N_agents)][test] = difference_empirical_and_expected_cost_to_go
 
                 K_closed_form = dyn_game.solve_closed_form_MPC(T_hor, P_OL)
 
@@ -144,7 +157,7 @@ if __name__ == '__main__':
                     # alg.set_stepsize_using_Lip_const(safety_margin=.9)
                     index_storage = 0
                     avg_time_per_it = 0
-                    if is_OL_solved:
+                    if is_OL_solved and (max_ONE_eigval<1):
                         for k in range(N_iter):
                             if k % N_it_per_residual_computation == 0:
                                 # Save performance metrics
@@ -204,10 +217,11 @@ if __name__ == '__main__':
     #               cost_store, u_PMP_CL_store, u_PMP_OL_store, P_OL_store,
     #               is_game_solved_store, is_ONE_solved_store, is_P_subspace_store,
     #               is_subspace_stable_store, is_subspace_unique_store], f)
-    pickle.dump([ x_store, u_store, residual_store, u_pred_traj_store, u_shifted_traj_store,
+    pickle.dump([ x_store, u_store, u_pred_traj_store, u_shifted_traj_store,
                   T_hor_to_test, N_agents_to_test, cost_store,
-                  is_game_solved_store, is_ONE_solved_store, is_P_subspace_store,
-                  is_subspace_stable_store, is_subspace_unique_store, is_ONE_equal_to_affine_LQR_store], f)
+                  is_game_solved_store, is_ONE_solved_store, P_subspace_error_store,
+                  max_subspace_eigval_store, is_subspace_unique_store, max_ONE_eigval_store,
+                  difference_affine_LQR_and_ONE_controller_store, difference_empirical_and_expected_cost_to_go_store], f)
     f.close()
     print("Saved")
     logging.info("Saved, job done")

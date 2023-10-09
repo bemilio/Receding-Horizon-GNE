@@ -311,16 +311,21 @@ class LQ:
         N = self.N_agents
         K = np.zeros((N, n_u, n_x))
         P = np.zeros((N, n_x, n_x))
+        is_initialization_stable = False
+        while not is_initialization_stable:
+            K_init = np.random.randn(N, n_u, n_x)
+            is_initialization_stable = max(np.abs(np.linalg.eigvals(A + np.sum(B@K_init, axis=0)))) <1
+        K = K_init
         # Stable initialization: cooperative optimal controller
-        B_coop = np.column_stack([B[i] for i in range(N)])
-        P_init, K_init = self.solve_closed_loop_inf_hor_problem()
-        P[:] = P_init[:]
-        K[:] = K_init[:]
-        for i in range(N):
-            if min(np.linalg.eigvalsh(P_init[i])) < 0:
-                warnings.warn("[solve_open_loop_inf_hor_problem] The closed loop P is non-positive definite")
-        if max(np.abs(np.linalg.eigvals(A + np.sum(B @ K_init, axis=0)))) > 1.001:
-            warnings.warn("[solve_open_loop_inf_hor_problem] The infinite horizon CL-GNE has an unstable dynamics")
+        # B_coop = np.column_stack([B[i] for i in range(N)])
+        # P_init, K_init = self.solve_closed_loop_inf_hor_problem()
+        # P[:] = P_init[:]
+        # K[:] = K_init[:]
+        # for i in range(N):
+        #     if min(np.linalg.eigvalsh(P_init[i])) < 0:
+        #         warnings.warn("[solve_open_loop_inf_hor_problem] The closed loop P is non-positive definite")
+        # if max(np.abs(np.linalg.eigvals(A + np.sum(B @ K_init, axis=0)))) > 1.001:
+        #     warnings.warn("[solve_open_loop_inf_hor_problem] The infinite horizon CL-GNE has an unstable dynamics")
         # P_init = solve_discrete_are(A, B_coop, np.eye(n_x), np.eye(N * n_u))
         # K_init = - np.linalg.inv(np.eye(N * n_u) + B_coop.T @ P_coop @ B_coop) @ (B_coop.T @ P_coop @ A)
         # for i in range(N):
@@ -372,7 +377,7 @@ class LQ:
         else:
             is_solved = True
             for i in range(N):
-                if min(np.linalg.eigvalsh(P[i])) < 0:
+                if min(np.linalg.eigvals(P[i])) < 0:
                     warnings.warn("[solve_open_loop_inf_hor_problem] The open loop P is non-positive definite")
                     is_P_posdef = False
                 if np.linalg.norm(P[i] - P[i].T)> eps_error:
@@ -380,7 +385,8 @@ class LQ:
             if max(np.abs(np.linalg.eigvals(A + np.sum(B @ K, axis=0)))) > 1.001:
                 warnings.warn("The infinite horizon OL-GNE has an unstable dynamics")
                 is_OL_stable = False
-        return P, K, is_solved, is_OL_stable, is_P_symmetric, is_P_posdef
+        max_closed_loop_eig = max(np.abs(np.linalg.eigvals(A + np.sum(B @ K, axis=0))))
+        return P, K, is_solved, max_closed_loop_eig, is_P_symmetric, is_P_posdef
 
     def compute_ONE_terminal_cost(self, n_iter=10000, eps_error=10**(-7), integration_length=100):
         P, K, is_solved, _, _, _ = self.solve_open_loop_inf_hor_problem(n_iter=n_iter, eps_error=eps_error)
@@ -434,6 +440,8 @@ class LQ:
         is_condition_verified = [False for _ in range(self.N_agents)]
         empirical_cost_to_go = multiagent_array(np.zeros((self.N_agents, self.n_x, self.n_x)))
         is_ONE_and_affine_cost_to_go_equal = False
+        difference_affine_LQR_and_ONE_controller = 0
+        difference_empirical_and_expected_cost_to_go = 0
         if is_solved:
             for i in range(self.N_agents):
                 A_cl_i[i] = (self.A.T @ (I_x - self.B[i] @ np.linalg.inv(self.R[i] + self.B[i].T @ P_LQR[i] @ self.B[i]) @ self.B[i].T @ P_LQR[i]).T).T
@@ -447,9 +455,13 @@ class LQ:
                 else:
                     is_condition_verified[i] = False
             cost_to_go = multiagent_array(0.5*P_LQR + P_tilde + C)
-            if np.linalg.norm((empirical_cost_to_go + empirical_cost_to_go.T3D()) - (cost_to_go + cost_to_go.T3D())) < eps:
-                is_ONE_and_affine_cost_to_go_equal = True
-        return all(is_condition_verified), is_ONE_and_affine_cost_to_go_equal
+            difference_affine_LQR_and_ONE_controller = np.linalg.norm(K_affine - K)
+            difference_empirical_and_expected_cost_to_go = np.linalg.norm((empirical_cost_to_go + empirical_cost_to_go.T3D()) - (cost_to_go + cost_to_go.T3D()))
+            if difference_empirical_and_expected_cost_to_go> 0.001:
+                print("aaahg")
+            # if np.linalg.norm((empirical_cost_to_go + empirical_cost_to_go.T3D()) - (cost_to_go + cost_to_go.T3D())) < eps:
+            #     is_ONE_and_affine_cost_to_go_equal = True
+        return difference_affine_LQR_and_ONE_controller, difference_empirical_and_expected_cost_to_go
 
     def compute_MPC_optimality_conditions(self, T_hor, P):
         '''
@@ -468,7 +480,10 @@ class LQ:
         T_last = self.T[-self.n_x:, :]
         I_x = np.eye(self.n_x)
         for i in range(self.N_agents):
-            P_LQR[i] = scipy.linalg.solve_discrete_are(self.A, self.B[i], self.Q[i], self.R[i])
+            try:
+                P_LQR[i] = scipy.linalg.solve_discrete_are(self.A, self.B[i], self.Q[i], self.R[i])
+            except Exception as e:
+                print(str(e))
             R_hat[i] = np.kron(np.eye(T_hor), self.R[i])
             Q_hat[i] = block_diag(*(np.kron(np.eye(T_hor - 1), self.Q[i]), P_LQR[i]))
         P_tilde = P - P_LQR
@@ -725,9 +740,9 @@ class LQ:
                        np.hstack((H_21, H_22))))
         return H
 
-    def check_P_is_H_graph_invariant_subspace(self, P, eps = 10 **(-5)):
+    def check_P_is_H_graph_invariant_subspace(self, P, K, eps = 10 **(-5)):
         '''
-        Given a set of N square matrices P (derived by soling for the O-NE infinite horizon),
+        Given a set of N square matrices P (derived by solving for the O-NE infinite horizon),
         this function verifies Assumption 4.9 [Monti '23] aposteriori
         (namely, that P define a stable invariant subspace for the matrix H defined in (4.25) [Monti '23] and that
         H has only n_x eigenvalues with modulus <1)
@@ -735,13 +750,10 @@ class LQ:
         H = self.compute_H_matrix()
         P_all = np.vstack([P[i] for i in range(self.N_agents)])
         P_graph = np.vstack((np.eye(self.n_x), P_all))
-        Y = H @ P_graph
-        Y_1 = Y[0:self.n_x, :]
-        err = 0
         # Verify (4.28) [Monti, '23]
         Lambda = H[:self.n_x, :] @ P_graph
-        err = np.linalg.norm((H[self.n_x:, :] @ P_graph @ np.linalg.inv(Lambda)) - P_all)
-        if err < eps:
+        invariance_error = np.linalg.norm((H[self.n_x:, :] @ P_graph @ np.linalg.inv(Lambda)) - P_all)
+        if invariance_error < eps:
             is_P_subspace = True
         else:
             is_P_subspace = False
@@ -753,6 +765,10 @@ class LQ:
         else:
             is_subspace_stable = False
 
+        if max_eigval_subspace >= 1 and is_P_subspace:
+            K_CL = self.A + np.sum(self.B @ K, axis=0)
+            print("pausing...")
+
         # Check if the subspace is the unique stable one
         mask = np.abs(np.linalg.eigvals(H)) < 1
         count_stable_eigvals = np.sum(mask)
@@ -761,4 +777,4 @@ class LQ:
         else:
             is_subspace_unique = False
 
-        return is_P_subspace, is_subspace_stable, is_subspace_unique
+        return invariance_error, max_eigval_subspace, is_subspace_unique
