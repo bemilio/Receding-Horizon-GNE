@@ -20,16 +20,16 @@ if __name__ == '__main__':
     print("Random seed set to  " + str(seed))
     logging.info("Random seed set to  " + str(seed))
     np.random.seed(seed)
-    N_it_per_residual_computation = 10
+    N_it_per_residual_computation = 500
     N_agents_to_test = [4]
     N_random_tests = 300
 
     # parameters
-    N_iter = 10
+    N_iter = 10**6
     n_x = 3
     n_u = 2
     T_hor_to_test = [2, 4, 6]
-    T_sim = 10
+    T_sim = 20
     eps = 10**(-5) # convergence threshold
 
     ##########################################
@@ -73,8 +73,8 @@ if __name__ == '__main__':
             attempts_counter = 0
             C_x = np.vstack((np.eye(n_x), -np.eye(n_x)))
             C_u_loc = np.stack([np.vstack((np.eye(n_u), -np.eye(n_u))) for _ in range(N_agents)], axis=0)
-            d_x = 2 * np.ones((2 * n_x, 1))
-            d_u_loc = 1 * np.ones((N_agents, 2 * n_u, 1))
+            d_x = 1 * np.ones((2 * n_x, 1))
+            d_u_loc = .2 * np.ones((N_agents, 2 * n_u, 1))
             C_u_sh = np.zeros((N_agents, 1, n_u))
             d_u_sh = np.zeros((N_agents, 1, 1))
             while ~are_assumptions_satisfied:
@@ -84,7 +84,7 @@ if __name__ == '__main__':
                 dyn_game = dyngames.LQ(A, B, Q, R, P, C_x, d_x, C_u_loc, d_u_loc, C_u_sh, d_u_sh, 1)
                 P_OL, K_OL, is_OL_solved, max_ONE_eigval, is_P_symmetric, is_P_posdef = dyn_game.solve_open_loop_inf_hor_problem()
                 P_subspace_error, max_subspace_eigval, is_subspace_unique = dyn_game.check_P_is_H_graph_invariant_subspace(P_OL, K_OL)
-                are_assumptions_satisfied = P_subspace_error<10**(-6) and max_subspace_eigval<1 and is_subspace_unique
+                are_assumptions_satisfied = P_subspace_error<10**(-6) and max_subspace_eigval<1
                 attempts_counter = attempts_counter +1
             for T_hor in T_hor_to_test:
                 test_counter = test_counter + 1
@@ -96,7 +96,7 @@ if __name__ == '__main__':
                 dyn_game = dyngames.LQ(A, B, Q, R, P, C_x, d_x, C_u_loc, d_u_loc, C_u_sh, d_u_sh, T_hor)
                 dyn_game.set_term_cost_to_inf_hor_sol(mode="OL")
                 # dyn_game.set_term_cost_to_inf_hor_sol(mode="CL", method='lyap')
-                x_0 = np.ones((n_x, 1))
+                x_0 = .5* np.ones((n_x, 1))
                 x_last = np.zeros((n_x, 1)) #stores last state of the sequence
                 # Store system dynamics
                 A_store[T_hor_to_test.index(T_hor)][N_agents_to_test.index(N_agents)][test, :] = A
