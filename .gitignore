@@ -10,3 +10,5 @@ __pycache__/GameDefinition.cpython-310.pyc
 log.txt
 *.txt
 *.iml
+*.asv
+matlab/tbxmanager/*
