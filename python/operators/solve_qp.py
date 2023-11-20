@@ -6,7 +6,7 @@ import logging
 
 def solve_qp(Q, q, A, l, u):
     m = osqp.OSQP()
-    m.setup(csc_matrix(Q), q.squeeze(), csc_matrix(A), l, u)
+    m.setup(csc_matrix(Q), q.squeeze(), csc_matrix(A), l, u, verbose=False)
     results = m.solve()
     if results.info.status != 'solved':
         print("[solve_qp]: OSQP did not solve correctly, OSQP status:" + results.info.status)
