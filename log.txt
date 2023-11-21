@@ -1,2 +1,1 @@
 INFO:root:Random seed set to  1
-INFO:root:Test 1 of 4; Timestep 0 of 10

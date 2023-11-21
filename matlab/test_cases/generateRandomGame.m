@@ -1,6 +1,6 @@
 function game = generateRandomGame(n_x, n_u, N, sparse_density, pos_def)
 % generateRandomGame  Generates random LQ dynamic game.
-%   C = ADDME(n_x, n_u, N, sparse_density, pos_def)
+%   C = generateRandomGame(n_x, n_u, N, sparse_density, pos_def)
 %   generates a random game with n_x states, n_u inputs per agent and N
 %   agents. The resulting matrices are sparse with density sparse_density.
 %   The Q and R matrices are positive definite with minimum eigenvalues >=
