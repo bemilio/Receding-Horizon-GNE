@@ -7,11 +7,11 @@ function x_0 = generateReachableInitState(game, expmpc, X_f, T)
 
     while ~is_init_state_reachable 
         x_0 = game.min_x + (diag(game.max_x - game.min_x) * rand(n_x, 1));
-        u_full_trajectory = zeros(game.n_u*T, 1, N);
+        u_full_trajectory = zeros(game.n_u*T, N);
         for i=1:N
-            u_full_trajectory(:,:,i) = expmpc{i}.optimizer.feval(x_0, 'primal');
+            u_full_trajectory(:,i) = expmpc{i}.optimizer.feval(x_0, 'primal');
         end
-        x_T = evolveState(x_0, game.A, game.B, u_full_trajectory, T);
+        x_T = evolveState(x_0, game.A, game.B, u_full_trajectory, T, n_u);
         is_init_state_reachable = X_f.contains(x_T);    
     end
 end

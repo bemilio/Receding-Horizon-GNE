@@ -16,3 +16,4 @@ matlab/auxiliary/diary
 matlab/diary
 matlab/dyn_games/diary
 matlab/dyn_games/f_NE_consistency_result.mat
+*.mat

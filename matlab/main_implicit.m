@@ -18,7 +18,7 @@ max_x = 1;
 min_x = -1;
 max_u = 1;
 min_u = -1;
-N_tests = 100;
+N_tests = 2;
 
 sparse_density=0.4;
 posdef=0.5;
@@ -30,7 +30,7 @@ workers_complete = 0;
 
 parfor test = 1:N_tests
     disp( "Initializing worker " + num2str(test) )
-    u_test = zeros(n_u,  N, T_sim);
+    u_test = zeros(n_u, N, T_sim);
     u_full_trajectory_test = zeros(n_u*T, N, T_sim);
     u_shifted_test = zeros(n_u*T, N, T_sim);
 
@@ -45,39 +45,31 @@ parfor test = 1:N_tests
     X_f = computeTerminalSetCL(game, K);
     
     game.P = P;
-    
-    expmpc = solveExplFinHorCL(game, T);
-    
-    x = zeros(n_x, 1, T_sim + 1);
+        
+    x = zeros(n_x, T_sim + 1);
     is_init_state_reachable = false;
-    x_0 = generateReachableInitState(game, expmpc, X_f, T);
+    x_0 = game.min_x + (diag(game.max_x - game.min_x) * rand(n_x, 1));
+    %x_0 = generateReachableInitState(game, expmpc, X_f, T);
     x(:, 1) = x_0;
     
     for t=1:T_sim
-        for i=1:N
-            u_test(:, i, t)  = expmpc{i}.evaluate(x(:,t));
-            try
-                u_full_trajectory_test(:,i,t) = expmpc{i}.optimizer.feval(x(:,t), 'primal');
-            catch 
-               disp("Value of x: " + x(:,t))
-            end
-        end
+        [u_test(:, :, t), ~, u_full_trajectory_test(:,:,t)] = solveImplFinHorCL(game, T, x(:,t));
         x(:,t+1) = evolveState(x(:,t), game.A, game.B, u_test(:, :, t), 1, n_u);
-        % Retrieve last state, used for computing the shifted traje ctory
+        % Retrieve last state, used for computing the shifted trajectory
         x_T = evolveState(x(:,t), game.A, game.B, u_full_trajectory_test(:,:,t), T, n_u);
         for i=1:N
             u_shifted_test(:,i,t) = [u_full_trajectory_test(n_u+1:end, i, t); K(:,:,i) * x_T ];
         end
     end 
     u_full_trajectory(:,:,:,test) = u_full_trajectory_test;
-    u(:,:,:, test) = u_test;
-    u_shifted(:,:,:, test) = u_shifted_test;
+    u(:,:,:,test) = u_test;
+    u_shifted(:,:,:,test) = u_shifted_test;
     disp("Worker " + num2str(test) + " complete!")
 %    workers_complete = workers_complete + 1;
 %    disp("Workers complete: " + num2str(workers_complete) + " of " + num2str(N_tests))
 end
 
-save("f_NE_explicit_consistency_result", "u_shifted", "u", "u_full_trajectory");
+save("f_NE_implicit_consistency_result", "u_shifted", "u", "u_full_trajectory");
 disp( "Job complete" )
 
 % END script

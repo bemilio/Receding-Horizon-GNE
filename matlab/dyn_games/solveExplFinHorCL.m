@@ -1,4 +1,4 @@
-function expmpc = solveFinHorCL(game, T)
+function expmpc = solveExplFinHorCL(game, T)
 %SOLVEFINHORCL
 
 regions_list=num2cell(ones(game.N,1)');
