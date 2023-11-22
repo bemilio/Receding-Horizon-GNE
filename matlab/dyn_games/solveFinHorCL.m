@@ -34,7 +34,7 @@ sys_0.LQRSet
 for k=1:n_iter
     for i=1:game.N
         % Compute closed loop dynamics (PWA) as seen by agent i
-        all_regions_pwa = table2array(combinations(regions_list{1:i-1}, regions_list{1+1:end}));
+        all_regions_pwa = allcomb(regions_list{1:i-1}, regions_list{i+1:end});
         all_regions_pwa = [all_regions_pwa(:,1:i-1), ...
                            zeros(size(all_regions_pwa, 1), 1), ... % put a zero column associated to agent i (just to make indexing easier later on)
                            all_regions_pwa(:, i:end) ];
