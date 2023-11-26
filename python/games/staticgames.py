@@ -227,7 +227,7 @@ class AggregativePartialInfo:
         def __init__(self, communication_graph, N_dual_variables):
             super().__init__()
             # Convert Laplacian matrix to sparse tensor
-            L = networkx.laplacian_matrix(communication_graph).tocoo()
+            L = nx.laplacian_matrix(communication_graph).tocoo()
             values = L.data
             rows = L.row
             cols = L.col
@@ -252,7 +252,7 @@ class AggregativePartialInfo:
         def __init__(self, communication_graph):
             super().__init__()
             # Convert Laplacian matrix to sparse tensor
-            W = networkx.adjacency_matrix(communication_graph).tocoo()
+            W = nx.adjacency_matrix(communication_graph).tocoo()
             values = W.data
             rows = W.row
             cols = W.col
@@ -292,3 +292,78 @@ class AggregativePartialInfo:
         mu_A = torch.min(torch.linalg.eigvals(A_square).real)
         L_A = torch.sqrt(torch.max(torch.linalg.eigvals(A_square).real))
         return mu_A, L_A
+
+
+
+class GenericVI:
+    '''
+    VI with vector field
+    F(x) = \col(F_i(x_i))_i
+    where F is a list of N callable functions from x to F_i(x),
+    or N numpy arrays of size (n_x, N*n_x) with N number of agents
+    '''
+
+    def __init__(self, F, n_opt_var, A_ineq_loc, b_ineq_loc, A_eq_loc, b_eq_loc, A_ineq_shared, b_ineq_shared, communication_graph=None, test=False):
+        if test:
+            N, n_opt_var, F, A_ineq_shared, b_ineq_shared, \
+                A_ineq_loc, b_ineq_loc, A_eq_loc, b_eq_loc, communication_graph = self.setToTestGameSetup()
+
+        self.N_agents = len(F)
+        if communication_graph is None:
+            communication_graph = nx.complete_graph(self.N_agents)
+        self.n_opt_variables = n_opt_var
+        # Local constraints
+        self.A_ineq_loc = multiagent_array(A_ineq_loc)
+        self.b_ineq_loc = multiagent_array(b_ineq_loc)
+        self.n_loc_ineq_constr = self.A_ineq_loc.shape[1]
+        self.A_eq_loc = multiagent_array(A_eq_loc)
+        self.b_eq_loc = multiagent_array(b_eq_loc)
+        self.n_loc_eq_constr = self.A_ineq_loc.shape[1]
+        # Shared constraints
+        self.A_ineq_shared= multiagent_array(A_ineq_shared)
+        self.b_ineq_shared = multiagent_array(b_ineq_shared)
+        self.n_shared_ineq_constr = self.A_ineq_shared.shape[1]
+        # Define the game mapping and cost
+        self.F = self.GameMapping(F)
+        self.J = self.GameCost() # dummy, just for compatibility
+        # self.K = self.Consensus(communication_graph) #TODO
+
+    class GameMapping():
+        def __init__(self,  F):
+            self.F = lambda x: np.array([F_i(x) for F_i in F])
+        def compute(self, x):
+            # let x=col(x_i)_i, the following line creates a vector [x; x; ...; x] repeated N times
+            x_col = np.concatenate(x, axis=0)
+            pgrad = self.F(x_col)
+            return pgrad
+
+        def get_strMon_Lip_constants(self):
+            #TODO
+            raise NotImplementedError("[genericVI::get_strMon_Lip_constants] Not implemented")
+            return None
+    class GameCost():
+        def compute(self, x):
+            return None
+
+    def setToTestGameSetup(self):
+        # Solutions are x_2 = x_1, x_1<=0, x_2<=0
+        Q = np.zeros((2, 1, 2))
+        Q[0, 0, 1] = -1
+        Q[1, 0, 0] = 1
+        A_shared_ineq = np.zeros((2, 1, 1))
+        A_shared_ineq[0, 0, 0] = -1
+        A_shared_ineq[1, 0, 0] = 1
+        b_shared_ineq = np.zeros((2, 1, 1))
+        A_loc_ineq = np.zeros((2, 1, 1))
+        b_loc_ineq = np.zeros((2, 1, 1))
+        A_eq_loc = np.zeros((2, 1, 1))
+        b_eq_loc = np.zeros((2, 1, 1))
+        n_opt_var = 1
+        N = 2
+        communication_graph = nx.complete_graph(2)
+        F = [(lambda x, i=i: Q[i] @ x) for i in range(N)]
+        return N, n_opt_var, F, A_shared_ineq, b_shared_ineq, A_loc_ineq, b_loc_ineq, A_eq_loc, b_eq_loc, communication_graph
+
+    def get_strMon_Lip_constants_eq_constraints(self):
+        #TODO
+        raise NotImplementedError("[GenericVI::get_strMon_Lip_constants_eq_constraints] Not implemented")
