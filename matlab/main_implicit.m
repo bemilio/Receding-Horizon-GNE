@@ -45,6 +45,8 @@ parfor test = 1:N_tests
     X_f = computeTerminalSetCL(game, K);
     
     game.P = P;
+
+    game.VI_generator = computeVIGenerator(game, T);
         
     x = zeros(n_x, T_sim + 1);
     is_init_state_reachable = false;
