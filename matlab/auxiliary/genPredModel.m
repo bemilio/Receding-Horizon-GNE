@@ -12,7 +12,7 @@ for k=1:T_hor
 end
 
 %Prediction matrix from input
-N = shape(B,3);
+N = size(B,3);
 S=zeros(nx*(T_hor),nu*(T_hor), N);
 for idx_agent=1:N
     for k=1:T_hor

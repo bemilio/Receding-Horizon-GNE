@@ -1,3 +1,8 @@
+% Test for closed loop-NE solved via the explicit MPC solver recursively.
+% This method does not work in general (the algorithm generates exponentially increasing
+% number of partitions of the state-space that increases computation until
+% the code hangs).
+
 clear all
 clc
 close all

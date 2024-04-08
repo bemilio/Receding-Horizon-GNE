@@ -16,10 +16,10 @@ FF = [c, game.A, B];
 
 % define inequality constraints
 for i=1:game.N
-    Gcx = [-game.min_x; game.max_x]; % affine part of constraints on x 
-    Gcu = [-game.min_u; game.max_u]; % affine part of constraints on x 
-    Gx = [-eye(game.n_x); eye(game.n_x)];
-    Gu = [-eye(game.n_u); eye(game.n_u)];
+    Gcx = [-min_x; max_x]; % affine part of constraints on x 
+    Gcu = [-min_u; max_u]; % affine part of constraints on x 
+    Gx = [-eye(n_x); eye(n_x)];
+    Gu = [-eye(n_u); eye(n_u)];
     G{1,i} = [ [Gcx;Gcu], blkdiag(Gx, Gu) ]; 
     for t = 1:T
         R_all = zeros(game.N * game.n_u);
