@@ -63,11 +63,16 @@ for test = 1:N_tests
     n_sh_constraints = size(A_sh,1);
     dual = zeros(n_sh_constraints, N);
     for t=1:T_sim
-        [VI.J, VI.F, VI.A_sh, VI.b_sh, VI.A_loc, VI.b_loc] = game.VI_generator(x(:,t));
-        u_warm_start = u_shift_cl(:,:,t-1);
+        [VI.J, VI.F, VI.A_sh, VI.b_sh, VI.A_loc, VI.b_loc, VI.n_x, VI.N]...
+            = game.VI_generator(x(:,t));
+        if t>1
+            u_warm_start = u_shift_cl(:,:,t-1);
+        else
+            u_warm_start = pagemtimes(K, x_0);
+        end
         dual_warm_start = dual;
-        [u_full_traj_ol(:,:,t), dual] = solveVI(VI, 0.001,0.001, 10^5, u_warm_start);
-        [u_cl(:, :, t), ~, u_full_traj_cl(:,:,t)] = solveImplFinHorCL(game, T, x(:,t));
+        [u_full_traj_ol(:,:,t), dual] = solveVICentrFB(VI, 0.001,0.001, 10^5, u_warm_start);
+        %[u_cl(:, :, t), ~, u_full_traj_cl(:,:,t)] = solveImplFinHorCL(game, T, x(:,t));
         x(:,t+1) = evolveState(x(:,t), game.A, game.B, u_cl(:, :, t), 1, n_u);
         % Retrieve last state, used for computing the shifted trajectory
         x_T = evolveState(x(:,t), game.A, game.B, u_full_traj_cl(:,:,t), T, n_u);

@@ -69,7 +69,7 @@ function [C_all, D_all, d_all] = generateStateConstr(predmod, C, d, T_hor)
     end
 end
 
-function [J,F, A_sh, b_sh, A_loc, b_loc] = genVIFromInitialState(W,G,H,...
+function [J,F, A_sh, b_sh, A_loc, b_loc, n_x, N] = genVIFromInitialState(W,G,H,...
                                         C_u_loc,d_u_loc,C_u_sh,d_u_sh, ...
                                         C_x,D_x,d_x,x_0, N, n_u, T_hor)
     % given an n*m*p array createa a np * m * p array, where each page of
@@ -102,4 +102,7 @@ function [J,F, A_sh, b_sh, A_loc, b_loc] = genVIFromInitialState(W,G,H,...
         A_sh(:,:,i) = [C_u_sh(:,:,i); C_x(:,:,i)];
         b_sh(:,:,i) = [d_u_sh(:,:,i); d_x0(:,:,i) + d_x(:,:,i)];
     end
+    n_x = n_u * T_hor;
+    N = N;
+
 end
