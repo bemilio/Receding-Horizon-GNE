@@ -30,7 +30,7 @@ G = zeros(game.n_u * game.N * T_hor, game.n_x, game.N);
 H = zeros(game.n_x, game.n_x, game.N);
 S_all = reshape(predmod.S, game.n_x * T_hor, game.N * game.n_u * T_hor); % horizontal stack of all S(:,:,i)
 for i =1:game.N
-    Q_i = blkdiag(kron(eye(T_hor-1), game.Q(:,:,i)), game.P(:,:,i));
+    Q_i = blkdiag(kron(eye(T_hor-1), game.Q(:,:,i)), game.P_ol(:,:,i));
     W(:, :, i) = S_all' * Q_i * S_all;
     W(1+(i-1)*game.n_u*T_hor : i*game.n_u*T_hor, 1+(i-1)*game.n_u*T_hor : i*game.n_u*T_hor, i) = ...
         W(1+(i-1)*game.n_u*T_hor : i*game.n_u*T_hor, 1+(i-1)*game.n_u*T_hor : i*game.n_u*T_hor, i) + ...
@@ -74,7 +74,7 @@ function [J,F, A_sh, b_sh, A_loc, b_loc, n_x, N] = genVIFromInitialState(W,G,H,.
                                         C_x,D_x,d_x,x_0, N, n_u, T_hor)
     % given an n*m*p array createa a np * m * p array, where each page of
     % the new array is the column stack of all pages of the original array
-    rep = @(u) repmat(reshape(u, [n_u * N,1] ), 1,1,N); 
+    rep = @(u) repmat(reshape(u, [n_u * N * T_hor,1] ), 1,1,N); 
     for i=1:N
         h(i) = .5*x_0'*H(:,:,i)*x_0;
     end
@@ -87,18 +87,16 @@ function [J,F, A_sh, b_sh, A_loc, b_loc, n_x, N] = genVIFromInitialState(W,G,H,.
         sel_mat(:, (i-1)*n_u*T_hor+1:i*n_u*T_hor,i) = eye(n_u*T_hor);
     end
     Q = pagemtimes(sel_mat, W);
-    F = @(u) pagemtimes(Q, rep(u)) + g;
+    F = @(u) pagemtimes(Q, rep(u)) + pagemtimes(sel_mat, g);
     
-    A_loc = [];
-    b_loc = [];
     n_sh_const_u = size(C_u_sh,1);
     n_const_x = size(C_x,1);
     A_sh = zeros(n_sh_const_u + n_const_x, n_u*T_hor,N);
     b_sh = zeros(n_sh_const_u + n_const_x, 1,N);
     d_x0 = pagemtimes(D_x, x_0);
+    A_loc = C_u_loc;
+    b_loc = d_u_loc;
     for i=1:N
-        A_loc = [A_loc; C_u_loc(:,:,i)];
-        b_loc = [b_loc; d_u_loc(:,:,i)];
         A_sh(:,:,i) = [C_u_sh(:,:,i); C_x(:,:,i)];
         b_sh(:,:,i) = [d_u_sh(:,:,i); d_x0(:,:,i) + d_x(:,:,i)];
     end

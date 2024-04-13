@@ -14,13 +14,20 @@ end
 c = zeros(game.n_x, 1);
 FF = [c, game.A, B];
 
-% define inequality constraints
+% define inequality constraints. If I am not mistaken by reading the
+% totally messy code from Laine, the inequality constraints are collected
+% in G, which is a cell array indexed in time and agent. For each t,i then
+% Gti:=G{t,i} is a matrix where each line g:=Gti(p,:) is a constraint of
+% the kind 
+% g(1) <= (maybe >=?) g(2:)'* [x; u_i]
+% except for index T+1 which is a terminal constraint and does not include
+% constraints on the input.
 for i=1:game.N
-    Gcx = [-min_x; max_x]; % affine part of constraints on x 
-    Gcu = [-min_u; max_u]; % affine part of constraints on x 
-    Gx = [-eye(n_x); eye(n_x)];
-    Gu = [-eye(n_u); eye(n_u)];
-    G{1,i} = [ [Gcx;Gcu], blkdiag(Gx, Gu) ]; 
+    % Gcx = [-min_x; max_x]; % affine part of constraints on x 
+    % Gcu = [-min_u; max_u]; % affine part of constraints on x 
+    % Gx = [-eye(game.n_x); eye(game.n_x)];
+    % Gu = [-eye(game.n_u); eye(game.n_u)];
+    G{1,i} = [ [game.d_x; game.d_u_loc(:,:,i)], blkdiag(game.C_x, game.C_u_loc(:,:,i)) ]; 
     for t = 1:T
         R_all = zeros(game.N * game.n_u);
         R_all(1+(i-1)*game.n_u:i*game.n_u, 1+(i-1)*game.n_u:i*game.n_u ) = game.R(:,:,i);
@@ -30,8 +37,8 @@ for i=1:game.N
         F{t} = FF;
         working_set{t,i} = zeros(size(G{1,i},1),1);
     end
-    Q{T+1,i} = blkdiag(0, game.P(:,:,i)); % the 0-block is because the first column (?) is for the linear part of the cost
-    G{T+1,i} = [Gcx, Gx];
+    Q{T+1,i} = blkdiag(0, game.P_cl(:,:,i)); % the 0-block is because the first column (?) is for the linear part of the cost
+    G{T+1,i} = [game.d_x, game.C_x];
     H{T+1,i} = zeros(0,game.n_x+1);
     working_set{T+1,i} = zeros(size(G{1,i},1),1);
     m{i} = game.n_u;
