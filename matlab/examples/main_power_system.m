@@ -16,10 +16,10 @@ N = 5;
 T = 4;
 T_sim = 10;
 
-max_x = kron(ones(n_x, 1), 0.5);
-min_x = kron(ones(n_x, 1),-0.5);
-max_u = kron(ones(n_u, 1),10);
-min_u = kron(ones(n_u, 1),-10);
+max_x = kron(ones(n_x, 1), 1);
+min_x = kron(ones(n_x, 1),-1);
+max_u = kron(ones(n_u, 1),1);
+min_u = kron(ones(n_u, 1),-1);
 N_tests = 1;
 
 sparse_density=0.4;
@@ -74,7 +74,7 @@ for test = 1:N_tests
             u_cl_warm_start = zeros(n_u * T, 1, N); %unused
         end
         dual_warm_start = dual;
-        [u_full_traj_ol(:,:,:,t), dual] = solveVICentrFB(VI, 10^5, 10^(-4), ...
+        [u_full_traj_ol(:,:,:,t), dual, res, solved(t)] = solveVICentrFB(VI, 10^5, 10^(-4), ...
             0.001, 0.001, u_ol_warm_start, dual_warm_start);
         u_ol(:,:,:,t) = u_full_traj_ol(1:n_u,:,:,t);
         x_ol(:,:,t+1) = evolveState(x_ol(:,:,t), game.A, game.B, u_ol(:, :,:, t), 1, n_u);
@@ -96,7 +96,7 @@ end
 
 
 
-save("f_NE_implicit_consistency_result", "u_shifted", "u", "u_full_trajectory");
+% save("f_NE_implicit_consistency_result", "u_shifted", "u", "u_full_trajectory");
 disp( "Job complete" )
 
 % END script
