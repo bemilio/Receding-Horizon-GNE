@@ -1,25 +1,30 @@
-% Solver of CL-NE with implicit solution based on Laine
+%  4-zones power system distributed control based on Venkat, Hiskens,
+%  Rawlings, Wright 2008
 
 clear all
 clc
 close all
-addpath(genpath(pwd))
+addpath(genpath('../../')) % add all folders in the root folder
+rmpath(genpath('../')) % remove folders of the other examples (function names are conflicting)
+addpath(genpath(pwd)) % re-add the subfolders of this example
+
 
 diary
 
 seed = 1;
 rng(seed); 
 
-n_x = 4;
-n_u = 3;
+G = defineGraph 
+n_x = N * 3; % Speed of generators, battery charge, cumulative load deferral
+n_u = 1; % % generator acceleration, battery charge, load deferral
 N = 5;
-T = 4;
-T_sim = 10;
+T = 6;
+T_sim = 50;
 
 max_x = kron(ones(n_x, 1), 1);
 min_x = kron(ones(n_x, 1),-1);
 max_u = kron(ones(n_u, 1),1);
-min_u = kron(ones(n_u, 1),-1);
+min_u = [0; 0; - load_deferral_min];
 N_tests = 1;
 
 sparse_density=0.4;
@@ -39,14 +44,13 @@ for test = 1:N_tests
     u_full_traj_ol = zeros(n_u*T, 1, N, T_sim);
     u_shift_ol = zeros(n_u*T, 1, N, T_sim);
 
-    game = genIntegratorsGame(n_x, n_u, N, 0.9);
+    game = definePowerSystemGame(n_x, n_u, N, 0.9);
 
     % game = generateRandomGame(n_x, n_u, N, 1, 0.1);
     [game.P_cl, game.K_cl, isInfHorStable_cl] = solveInfHorCL(game, 1000, 10^(-6));
     [game.P_ol, game.K_ol, isInfHorStable_ol] = solveInfHorOL(game, 1000, 10^(-6));
     
-    [game.C_x, game.d_x, game.C_u_loc, game.d_u_loc] = defineBoxConstraints(n_x, n_u, ...
-        min_x, max_x, min_u, max_u, N);
+    [game.C_x, game.d_x, game.C_u_loc, game.d_u_loc] = definePowerSystemLimits(N, x_ref, u_ref);
 
     [game.C_u_sh, game.d_u_sh] = defineDummySharedInputConstraints(n_u, N);
 

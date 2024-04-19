@@ -55,11 +55,11 @@ if err > eps_err
 end
 for i=1:N
     if min(eig(P(:,:,i))) < 0
-        warnings.warn("The open loop P is non-positive definite")
+        warning("The open loop P is non-positive definite")
     end
 end
 if max(abs(eig(A + sum(pagemtimes(B, K), 3)))) > 1.001
-    warnings.warn("The infinite horizon OL-GNE has an unstable dynamics")
+    warning("The infinite horizon OL-GNE has an unstable dynamics")
     isStable = false;
 else
     isStable=true;

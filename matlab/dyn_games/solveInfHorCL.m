@@ -42,7 +42,16 @@ end
 if  err > eps_err
     warning("[solveInfHorCL] Could not find infinite horizon CL-NE")
 end
-A_cl = A + sum(pagemtimes(B, K), 3);
-isStable = (max(abs(eig(A_cl))) < 1);
+for i=1:N
+    if min(eig(P(:,:,i))) < -eps_err
+        warning("The closed-loop P is non-positive definite")
+    end
+end
+if max(abs(eig(A + sum(pagemtimes(B, K), 3)))) > 1.0001
+    warning("The infinite horizon CL-GNE has an unstable dynamics")
+    isStable = false;
+else
+    isStable=true;
+end
 
 end
