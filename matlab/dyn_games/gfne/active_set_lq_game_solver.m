@@ -22,12 +22,12 @@ function [x,u,lam,mu,gam,psi,working_set,solve_iters,K] = active_set_lq_game_sol
 %         end
         [x,u,lam,mu,psi] = solve_ec_lq_game_d(F,H_active,Q,N,T,K,x0);
     else
-        disp('Active indices');
+        %disp('Active indices');
         for t= 1:T+1
             for i = 1:N
                 for j = 1:size(working_set{t,i})
                     if working_set{t,i}(j) > 0
-                        active = [t,i,j]
+                        active = [t,i,j];
                     end
                 end
             end
@@ -68,12 +68,12 @@ function [x,u,lam,mu,gam,psi,working_set,solve_iters,K] = active_set_lq_game_sol
 %                 end
                 [x,u,lam,mu,psi] = solve_ec_lq_game_d(F,H_active,Q,N,T,K,x0);
             else
-                disp('Active indices');
+                % disp('Active indices');
                 for t= 1:T+1
                     for i = 1:N
                         for j = 1:size(working_set{t,i})
                             if working_set{t,i}(j) > 0
-                                active = [t,i,j]
+                                active = [t,i,j];
                             end
                         end
                     end
@@ -107,12 +107,12 @@ function [x,u,lam,mu,gam,psi,working_set,solve_iters,K] = active_set_lq_game_sol
 %             end
             [xn,un,lam,mu,psi] = solve_ec_lq_game_d(F,H_active,Q,N,T,K,x0);
         else
-            disp('Active indices');
+            %disp('Active indices');
             for t= 1:T+1
                 for i = 1:N
                     for j = 1:size(working_set{t,i})
                         if working_set{t,i}(j) > 0
-                            active = [t,i,j]
+                            active = [t,i,j];
                         end
                     end
                 end

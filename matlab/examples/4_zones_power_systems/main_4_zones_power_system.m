@@ -20,10 +20,10 @@ n_x = 3 * G.numnodes + G.numedges ; % {For each node: speed of inertia,
 % mechanical power, steam valve position. For each edge: power flow
 n_u = 1; % reference at the governor
 N = G.numnodes; % 4
-T = 6;
+T = 10;
 T_sim = 50;
 
-N_tests = 1000;
+N_tests = 20;
 
 u_full_trajectory = zeros(n_u*T, N, T_sim, N_tests);
 u_shifted = zeros(n_u*T, N, T_sim, N_tests);
@@ -49,14 +49,17 @@ game = definePowerSystemGame(G);
 x_cl = zeros(n_x, 1, T_sim + 1);
 x_ol = zeros(n_x, 1, T_sim + 1);
 % is_init_state_reachable = false;
-x_0 = randn(n_x,1);% min_x + (diag(max_x - min_x) * rand(n_x, 1));
 X_f_cl = computeTerminalSetCL(game);
-x_0 = 0.1 * X_f_cl.project(x_0).x;
-is_cl_solved = zeros(N_tests,1);
-is_ol_solved = zeros(N_tests,1);
+is_test_valid_cl = zeros(N_tests,1);
+is_test_valid_ol = zeros(N_tests,1);
+err_shift = zeros(N_tests,1);
+
 for test = 1:N_tests
     disp( "Test " + num2str(test) )
     % x_0 = generateReachableInitState(game, expmpc, X_f, T);
+    x_0 = randn(n_x,1);% min_x + (diag(max_x - min_x) * rand(n_x, 1));
+    x_in_Xf = X_f_cl.project(x_0);
+    x_0 = 3*max(x_in_Xf) * randn(n_x,1) + x_in_Xf;
     x_cl(:, :, 1) = x_0;
     x_ol(:, :, 1) = x_0;
     
@@ -96,22 +99,27 @@ for test = 1:N_tests
             % Retrieve last state, used for computing the shifted trajectory
             x_cl_T = evolveState(x_cl(:,:,t), game.A, game.B, u_full_traj_cl(:,:,:,t), T, n_u);
             if ~X_f_cl.contains(x_cl_T)
-                is_cl_solved = 0;
+                is_test_valid_cl(test) = false;
             else
-                is_cl_solved = 1;
+                is_test_valid_cl(test) = true;
             end
             for i=1:N
                 u_shift_cl(:,:,i,t) = [u_full_traj_cl(n_u+1:end, :, i, t); game.K_cl(:,:,i) * x_cl_T ];
             end
         end
     end 
+    err_shift(test) = 0;
 
-    disp("Worker " + num2str(test) + " complete!")
-%    workers_complete = workers_complete + 1;
-%    disp("Workers complete: " + num2str(workers_complete) + " of " + num2str(N_tests))
+    if is_test_valid_cl(test)
+        for t=1:T_sim-1
+            for i=1:N
+                err_shift(test) = max(err_shift(test), norm(u_shift_cl(:,:,i,t) - u_full_traj_cl(:,:,i, t+1)));
+            end
+        end
+        disp("err test = " + num2str(err_shift(test)))
+    end
+
 end
-
-
 
 
 % save("f_NE_implicit_consistency_result", "u_shifted", "u", "u_full_trajectory");
