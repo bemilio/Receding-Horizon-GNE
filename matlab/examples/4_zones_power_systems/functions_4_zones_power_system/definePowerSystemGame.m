@@ -1,5 +1,4 @@
 function [game] = definePowerSystemGame(G)
-%% TODO!!
 
 % Parameters from Venkat thesis page 311
 D = [ 3; 0.275; 2; 2.75]; 
@@ -11,7 +10,8 @@ T_ij = [2.54; 1.5; 2.5];
 
 N = G.numnodes;
 E = G.numedges;
-n_node_states = 3;
+n_node_states = 3; % For each node: speed of inertia,
+% mechanical power, steam valve position. 
 n_edge_states = 1;
 n_x = N*n_node_states + E*n_edge_states;
 n_u = 1; %generator reference point for each node
@@ -23,10 +23,10 @@ Incid_mat = G.incidence;
 
 for i=1:N
     node_indexes = (i-1)*n_node_states+1: i*n_node_states;
-    A_nodes(node_indexes, node_indexes) = [ -D(i)/M_a(i),       1/M_a(i),  -1/M_a(i) ;
-                                            0,                 -1/T_ch(i), 1/T_ch(i) ;
+    A_nodes(node_indexes, node_indexes) = [ -D(i)/M_a(i),       1/M_a(i),  -1/M_a(i);
+                                            0,                 -1/T_ch(i), 1/T_ch(i);
                                             -1/(R_f(i)*T_G(i)), 0,         -1/T_G(i)];
-    A_nodes(node_indexes, N*n_node_states +1:end) = kron(Incid_mat(i,:), [1/M_a(i);0;0]); 
+    A_nodes(node_indexes, N*n_node_states +1:end) = kron(Incid_mat(i,:), [1/M_a(i);0;0]); % coupling between node variables and edge variables
 end
 for e=1:E
     Incid_mat_T = Incid_mat';

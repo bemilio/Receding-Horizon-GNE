@@ -1,4 +1,4 @@
-function [P,K, isStable] = solveInfHorCL(game, n_iter, eps_err)
+function [P,K, isStable, A_cl] = solveInfHorCL(game, n_iter, eps_err)
 %SOLVEINFHORCL 
 
 P = zeros(game.n_x, game.n_x, game.N);
@@ -10,6 +10,19 @@ R = game.R;
 n_x = game.n_x;
 n_u = game.n_u;
 N = game.N;
+B_all = [];
+Q_all = zeros(n_x, n_x);
+for i=1:N
+    B_all = [B_all, B(:,:,i)];
+    Q_all = Q_all + Q(:,:,i);
+end
+if ~is_stabilizable(A, B_all)
+    warning("[solveInfHorCL]: stabilizability assump. not satisfied")
+end
+if ~is_detectable(A, Q_all)
+    warning("[solveInfHorCL]: detectability assump. not satisfied")
+end
+
 % (adapted from sassano 22): 
 % solve P[i] = Q[i] + K[i]'R[i]K[i] + A_cl' P[i] A_cl 
 % b iterating the Riccati equation
@@ -47,6 +60,7 @@ for i=1:N
         warning("The closed-loop P is non-positive definite")
     end
 end
+A_cl = A + sum(pagemtimes(B, K), 3);
 if max(abs(eig(A + sum(pagemtimes(B, K), 3)))) > 1.0001
     warning("The infinite horizon CL-GNE has an unstable dynamics")
     isStable = false;

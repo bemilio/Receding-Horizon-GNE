@@ -1,6 +1,19 @@
 function [P,K, isStable] = solveInfHorOL(game, n_iter, eps_err)
 %SOLVEINFHORCL 
 
+%% Check if basic assumptions are satisfied
+if min(abs(eig(game.A)))<eps_err
+    warning("[solveInfHorOL] The matrix A appears singular")
+end
+for i=1:game.N
+    if ~is_stabilizable(game.A, game.B(:,:,i))
+        warning("[solveInfHorOL] The system is not stabilizable for agent " + num2str(i))
+    end
+    if ~is_detectable(game.A, game.Q(:,:,i))
+        warning("[solveInfHorOL] The system is not detectable for agent " + num2str(i))
+    end
+end
+
 P = zeros(game.n_x, game.n_x, game.N);
 K = zeros(game.n_u, game.n_x, game.N);
 A = game.A;
@@ -25,14 +38,15 @@ B_coop = reshape(B, n_x, n_u * N ); % stack B horizontally
 for i=1:N
     K(:,:,i) = - K_init(1+(i-1)*n_u:i*n_u, :);
 end
-
+all_good = true;
 for k=1:n_iter 
     A_cl = A + sum(pagemtimes(B, K), 3);
     for i=1:N
         try
             P(:,:,i) = sylvester(A_T_inv, -A_cl, A_T_inv * Q(:,:,i));  % solves -A.T @ X A_cl + X - Q[i] = 0
-        catch 
-            disp("[solveInfHorOL] An error occurred while solving the Sylvester equation")
+        catch e
+            disp("[solveInfHorOL] An error occurred while solving the Sylvester equation: " + e.message)
+            all_good = false;
         end
     end
     M = eye(n_x)/(eye(n_x) + sum( pagemtimes(pagemtimes(pagemtimes(B, Rinv), T3D(B)), P), 3));
@@ -48,6 +62,9 @@ for k=1:n_iter
             break
         end
     end
+    if ~all_good
+        break
+    end
 end
 %TODO:complete
 if err > eps_err
@@ -58,6 +75,8 @@ for i=1:N
         warning("The open loop P is non-positive definite")
     end
 end
+game.A_ol = A + sum(pagemtimes(B, K), 3);
+
 if max(abs(eig(A + sum(pagemtimes(B, K), 3)))) > 1.001
     warning("The infinite horizon OL-GNE has an unstable dynamics")
     isStable = false;

@@ -1,6 +1,3 @@
-%  4-zones power system distributed control based on Venkat, Hiskens,
-%  Rawlings, Wright 2008
-
 clear all
 clc
 close all
@@ -8,20 +5,14 @@ addpath(genpath('../../')) % add all folders in the root folder
 rmpath(genpath('../')) % remove folders of the other examples (function names are conflicting)
 addpath(genpath(pwd)) % re-add the subfolders of this example
 
-
-diary
-
 seed = 1;
 rng(seed); 
 
-G = generateGraph();
-
-n_x = 3 * G.numnodes + G.numedges ; % {For each node: speed of inertia,
-% mechanical power, steam valve position. For each edge: power flow
-n_u = 1; % reference at the governor
-N = G.numnodes; % 4
-T = 10;
-T_sim = 50;
+n_x = 2; 
+n_u = 1;
+N = 2;
+T = 2;
+T_sim = 2;
 
 N_tests = 1;
 
@@ -36,10 +27,8 @@ u_ol = zeros(n_u, 1, N, T_sim);
 u_full_traj_ol = zeros(n_u*T, 1, N, T_sim);
 u_shift_ol = zeros(n_u*T, 1, N, T_sim);
 
-game = definePowerSystemGame(G);
-
-% game = generateRandomGame(n_x, n_u, N, 1, 0.1);
-[game.P_cl, game.K_cl, isInfHorStable_cl] = solveInfHorCL(game, 1000, 10^(-6));
+game = defineBasicGame();
+[game.P_cl, game.K_cl, isInfHorStable_cl] = solveInfHorCL(game, 10000, 10^(-6));
 [game.P_ol, game.K_ol, isInfHorStable_ol] = solveInfHorOL(game, 1000, 10^(-6));
 
 [game.C_x, game.d_x, game.C_u_loc, game.d_u_loc] = defineConstraints(N, n_x, n_u);
@@ -54,14 +43,16 @@ is_test_valid_cl = zeros(N_tests,1);
 is_test_valid_ol = zeros(N_tests,1);
 err_shift = zeros(N_tests,1);
 
+x_0=[-1.2146; 1.1118];
+% x_0=[-1; 1];
+
 
 for test = 1:N_tests
     disp( "Test " + num2str(test) )
     % x_0 = generateReachableInitState(game, expmpc, X_f, T);
-    %x_0 = randn(n_x,1);
-    x_0 = [kron(ones(N,1),[.01;0;0]); zeros(G.numedges,1)];
+    x_0 = randn(n_x,1);% min_x + (diag(max_x - min_x) * rand(n_x, 1));
     x_in_Xf = X_f_cl.project(x_0);
-    x_0 = 3*max(x_in_Xf) * randn(n_x,1) + x_in_Xf;
+    x_0 =  randn(n_x,1);
     x_cl(:, :, 1) = x_0;
     x_ol(:, :, 1) = x_0;
     
@@ -100,10 +91,12 @@ for test = 1:N_tests
             x_cl(:,:,t+1) = evolveState(x_cl(:,:,t), game.A, game.B, u_cl(:, :,:, t), 1, n_u);
             % Retrieve last state, used for computing the shifted trajectory
             x_cl_T = evolveState(x_cl(:,:,t), game.A, game.B, u_full_traj_cl(:,:,:,t), T, n_u);
-            if ~X_f_cl.contains(x_cl_T)
-                is_test_valid_cl(test) = false;
-            else
-                is_test_valid_cl(test) = true;
+            if t==1
+                if ~X_f_cl.contains(x_cl_T)
+                    is_test_valid_cl(test) = false;
+                else
+                    is_test_valid_cl(test) = true;
+                end
             end
             for i=1:N
                 u_shift_cl(:,:,i,t) = [u_full_traj_cl(n_u+1:end, :, i, t); game.K_cl(:,:,i) * x_cl_T ];
@@ -119,17 +112,36 @@ for test = 1:N_tests
             end
         end
         disp("err test = " + num2str(err_shift(test)))
+        if err_shift(test)>0.01 && is_test_valid_cl(test)
+            disp("pause...")
+            plot(u_full_traj_cl(:,:,1,2), 'b')
+            plot(u_full_traj_cl(:,:,2,2), 'r')
+            hold on
+            plot(u_shift_cl(:,:,1,1), 'b--')
+            plot(u_shift_cl(:,:,1,1), 'r--')
+        end
     end
 
 end
 
 
-plot_power_sys
-
 % save("f_NE_implicit_consistency_result", "u_shifted", "u", "u_full_trajectory");
 disp( "Job complete" )
 
-% END script
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+
+A_cl = game.A + sum(pagemtimes(game.B, game.K_cl), 3);
+x1 = -2:.1:2;
+x2 = -2:.1:2;
+[X1, X2] = meshgrid(x1, x2);
+X_dot = zeros(size(X1));
+Y_dot = zeros(size(X2));
+for i = 1:numel(X1)
+    x = [X1(i); X2(i)];
+    x_dot = A_cl * x - x;
+    X_dot(i) = x_dot(1);
+    Y_dot(i) = x_dot(2);
+end
+
+quiver(X1, X2, X_dot, Y_dot);
 
