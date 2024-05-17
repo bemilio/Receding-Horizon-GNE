@@ -14,7 +14,7 @@ diary
 seed = 1;
 rng(seed); 
 
-G = defineGraph 
+G = defineGraph;
 n_x = N * 3; % Speed of generators, battery charge, cumulative load deferral
 n_u = 1; % % generator acceleration, battery charge, load deferral
 N = 5;

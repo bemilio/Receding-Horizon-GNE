@@ -21,7 +21,7 @@ n_x = 3 * G.numnodes + G.numedges ; % {For each node: speed of inertia,
 % mechanical power, steam valve position. For each edge: power flow
 n_u = 1; % reference at the governor
 N = G.numnodes; % 4
-T = 12;
+T = 13;
 T_sim = 100;
 
 N_tests = 100;
@@ -66,20 +66,20 @@ x_ol = zeros(n_x, 1, T_sim + 1, N_tests);
 x_bl = zeros(n_x, 1, T_sim + 1, N_tests);
 % is_init_state_reachable = false;
 X_f_cl = computeTerminalSetCL(game);
-is_test_valid_cl = zeros(N_tests,1);
-is_test_valid_ol = zeros(N_tests,1);
+% is_test_valid_cl = zeros(N_tests,1);
+% is_test_valid_ol = zeros(N_tests,1);
 err_shift = zeros(N_tests,1);
 x_0 = zeros(n_x, 1, N_tests);
 
-n_valid_tests = 0;
+norms_x_0_to_test = [.1, .5, 1, 5, 10]; % P-norm of initial state relative to radius of Xf
 test = 1;
 while test<N_tests + 1
     disp( "Test " + num2str(test) )
     % x_0 = generateReachableInitState(game, expmpc, X_f, T);
     %x_0 = randn(n_x,1);
-    x_0(:,:,test) = [kron(ones(N,1),[.01;0;0]); zeros(G.numedges,1)];
-    x_in_Xf = X_f_cl.project(x_0(:,:,test));
-    x_0(:,:,test) = 3*max(x_in_Xf) * randn(n_x,1) + x_in_Xf;
+    r_x_0 = X_f_cl.d * norms_x_0_to_test(1+mod(test, length(norms_x_0_to_test)));
+    x_0(:,:,test) = randVecWithGivenPNorm(X_f_cl.P,r_x_0);
+    % x_0(:,:,test) = [kron(ones(N,1),[.01;0;0]); zeros(G.numedges,1)];
     x_cl(:, :, 1, test) = x_0(:,:,test);
     x_ol(:, :, 1, test) = x_0(:,:,test);
     x_bl(:,:,1, test) = x_0(:,:,test);
@@ -116,45 +116,44 @@ while test<N_tests + 1
             end
         end
         %% Solve closed-loop MPC problem 
-        is_test_valid_cl(test) = true;
-        if isInfHorStable_cl && is_test_valid_cl(test)
+        if isInfHorStable_cl 
             [u_cl(:, :,:, t,test), ~, u_full_traj_cl(:,:,:,t)] = solveImplFinHorCL(game, T, x_cl(:,:,t,test));
             x_cl(:,:,t+1,test) = evolveState(x_cl(:,:,t,test), game.A, game.B, u_cl(:, :,:, t,test), 1, n_u);
             % Retrieve last state, used for computing the shifted trajectory
             x_cl_T = evolveState(x_cl(:,:,t,test), game.A, game.B, u_full_traj_cl(:,:,:,t), T, n_u);
-            if ~X_f_cl.contains(x_cl_T)
-                is_test_valid_cl(test) = false;
-            else
-                is_test_valid_cl(test) = true;
-            end
+            % if ~X_f_cl.contains(x_cl_T)
+            %     is_test_valid_cl(test) = false;
+            % else
+            %     is_test_valid_cl(test) = true;
+            % end
             for i=1:N
                 u_shift_cl(:,:,i,t) = [u_full_traj_cl(n_u+1:end, :, i, t); game.K_cl(:,:,i) * x_cl_T ];
             end
             % Baseline
-            if is_test_valid_cl(test)
-                [u_bl(:, :,:, t,test), ~, u_full_traj_bl(:,:,:,t)] = solveImplFinHorCL(game_bl, T, x_bl(:,:,t,test));
-                x_bl(:,:,t+1,test) = evolveState(x_bl(:,:,t,test), game_bl.A, game_bl.B, u_bl(:, :,:,t,test), 1, n_u);
-            end
+            % if is_test_valid_cl(test)
+            [u_bl(:, :,:, t,test), ~, u_full_traj_bl(:,:,:,t)] = solveImplFinHorCL(game_bl, T, x_bl(:,:,t,test));
+            x_bl(:,:,t+1,test) = evolveState(x_bl(:,:,t,test), game_bl.A, game_bl.B, u_bl(:, :,:,t,test), 1, n_u);
+            % end
         end
     end 
     % err_shift(test) = 0;
     % look for test where the baseline is unstable
-    unstable_cl(test) = max(x_cl(:,:,T_sim,test)) > 1;
-    unstable_bl(test) = max(x_bl(:,:,T_sim,test)) > 1;
-    if is_test_valid_cl(test) && ~unstable_cl(test) && unstable_bl(test)
-        interesting_test = test;
-    end
-    if is_test_valid_cl(test)
-        test = test+1;
-    end
+    % unstable_cl(test) = max(x_cl(:,:,T_sim,test)) > 1;
+    % unstable_bl(test) = max(x_bl(:,:,T_sim,test)) > 1;
+    % if is_test_valid_cl(test) && ~unstable_cl(test) && unstable_bl(test)
+    %     interesting_test = test;
+    % end
+    % if is_test_valid_cl(test)
+    test = test+1;
+    % end
 end
 
 
-for test = 1:N_tests
-    unstable_cl(test) = max(max(x_cl(:,:,:,test))) > 10;
-    unstable_bl(test) = max(max(x_bl(:,:,:,test))) > 10;
-end
-
+% for test = 1:N_tests
+%     unstable_cl(test) = max(max(x_cl(:,:,:,test))) > 10;
+%     unstable_bl(test) = max(max(x_bl(:,:,:,test))) > 10;
+% end
+save("workspace_variables.mat", "x_ol", "x_cl", "x_bl", "u_ol", "u_cl", "u_bl", "X_f_cl", "norms_x_0_to_test")
 plot_power_sys
 
 % save("f_NE_implicit_consistency_result", "u_shifted", "u", "u_full_trajectory");
