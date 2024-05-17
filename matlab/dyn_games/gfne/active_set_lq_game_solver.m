@@ -95,7 +95,7 @@ function [x,u,lam,mu,gam,psi,working_set,solve_iters,K] = active_set_lq_game_sol
         end
     end
     iters = 0;
-    disp('Feasible found');
+    % disp('Feasible found');
     while true
         if open_loop
             [K,k] = solve_ec_lq_game_r(F,H_active,Q,N,m,T);
@@ -287,7 +287,7 @@ function [x,u,lam,mu,gam,psi,working_set,solve_iters,K] = active_set_lq_game_sol
                 end
             end
             if cycle
-                disp('Cycle detected!');
+                % disp('Cycle detected!');
                 break;
             end
         end
