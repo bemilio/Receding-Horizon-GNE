@@ -4,106 +4,144 @@
 clear all
 clc
 close all
+
 addpath(genpath('../../')) % add all folders in the root folder
 rmpath(genpath('../')) % remove folders of the other examples (function names are conflicting)
 addpath(genpath(pwd)) % re-add the subfolders of this example
 
-
-diary
-
 seed = 1;
 rng(seed); 
 
-G = defineGraph;
-n_x = N * 3; % Speed of generators, battery charge, cumulative load deferral
-n_u = 1; % % generator acceleration, battery charge, load deferral
-N = 5;
-T = 6;
-T_sim = 50;
+N = 2;
 
-max_x = kron(ones(n_x, 1), 1);
-min_x = kron(ones(n_x, 1),-1);
-max_u = kron(ones(n_u, 1),1);
-min_u = [0; 0; - load_deferral_min];
+n_x = 3 * N ; % {For each agent: Generator speed, battery charge state, deferral of consumption
+n_u = 3; % ramp-up of generator, injected battery power, instantenuous load curbing
+T = 5;
+T_sim = 20;
+
 N_tests = 1;
-
-sparse_density=0.4;
-posdef=0.5;
 
 u_full_trajectory = zeros(n_u*T, N, T_sim, N_tests);
 u_shifted = zeros(n_u*T, N, T_sim, N_tests);
-workers_complete = 0;
 
-for test = 1:N_tests
-    disp( "Initializing worker " + num2str(test) )
-    u_cl = zeros(n_u, 1, N, T_sim);
-    u_full_traj_cl = zeros(n_u*T, 1, N, T_sim);
-    u_shift_cl = zeros(n_u*T, 1, N, T_sim);
+u_cl = zeros(n_u, 1, N, T_sim,N_tests);
+u_full_traj_cl = zeros(n_u*T, 1, N, T_sim);
+u_shift_cl = zeros(n_u*T, 1, N, T_sim);
 
-    u_ol = zeros(n_u, 1, N, T_sim);
-    u_full_traj_ol = zeros(n_u*T, 1, N, T_sim);
-    u_shift_ol = zeros(n_u*T, 1, N, T_sim);
+u_ol = zeros(n_u, 1, N, T_sim,N_tests);
+u_full_traj_ol = zeros(n_u*T, 1, N, T_sim);
+u_shift_ol = zeros(n_u*T, 1, N, T_sim);
 
-    game = definePowerSystemGame(n_x, n_u, N, 0.9);
+% Baseline 
+u_bl = zeros(n_u, 1, N, T_sim);
+u_full_traj_bl = zeros(n_u*T, 1, N, T_sim);
+u_shift_bl = zeros(n_u*T, 1, N, T_sim);
 
-    % game = generateRandomGame(n_x, n_u, N, 1, 0.1);
-    [game.P_cl, game.K_cl, isInfHorStable_cl] = solveInfHorCL(game, 1000, 10^(-6));
-    [game.P_ol, game.K_ol, isInfHorStable_ol] = solveInfHorOL(game, 1000, 10^(-6));
-    
-    [game.C_x, game.d_x, game.C_u_loc, game.d_u_loc] = definePowerSystemLimits(N, x_ref, u_ref);
+% Loads 
+load = rand(N,1);
+collective_load_ref = 10*rand;
 
-    [game.C_u_sh, game.d_u_sh] = defineDummySharedInputConstraints(n_u, N);
+param = defineLoadFlexGameParameters(N, load, collective_load_ref);
 
-    % X_f = computeTerminalSetCL(game, K);
-    game.VI_generator = computeVIGenerator(game, T);
+game = defineLoadFlexGame(N, param);
+
+[game.P_cl, game.K_cl, isInfHorStable_cl] = solveInfHorCL(game, 1000, 10^(-6));
+[game.P_ol, game.K_ol, isInfHorStable_ol] = solveInfHorOL(game, 1000, 10^(-6));
+
+[game.C_x, game.d_x, game.C_u_loc, game.d_u_loc] = defineLocalConstraints(N, param, game.offset_x, game.offset_u);
+
+[game.C_u_sh, game.d_u_sh] = defineDummySharedInputConstraints(n_u, N);
+% [game.C_u_sh, game.d_u_sh] = defineSharedConstraints(N, p, game.offset_x, game.offset_u);
+
+x_cl = zeros(n_x, 1, T_sim + 1, N_tests);
+x_ol = zeros(n_x, 1, T_sim + 1, N_tests);
+x_bl = zeros(n_x, 1, T_sim + 1, N_tests);
+
+X_f_cl = computeTerminalSetCL(game);
+
+err_shift = zeros(N_tests,1);
+x_0 = zeros(n_x, 1, N_tests);
+
+norms_x_0_to_test = [10]; % P-norm of initial state relative to radius of Xf
+test = 1;
+while test<N_tests + 1
+    disp( "Test " + num2str(test) )
+    %x_0 = randn(n_x,1);
+    r_x_0 = X_f_cl.d * norms_x_0_to_test(1+mod(test, length(norms_x_0_to_test)));
+    x_0(:,:,test) = randVecWithGivenPNorm(X_f_cl.P,r_x_0);
+    % x_0(:,:,test) = [kron(ones(N,1),[.01;0;0]); zeros(G.numedges,1)];
+    x_cl(:, :, 1, test) = x_0(:,:,test);
+    x_ol(:, :, 1, test) = x_0(:,:,test);
+    x_bl(:,:,1, test) = x_0(:,:,test);
         
-    x_cl = zeros(n_x, 1, T_sim + 1);
-    x_ol = zeros(n_x, 1, T_sim + 1);
-    is_init_state_reachable = false;
-    x_0 = min_x + (diag(max_x - min_x) * rand(n_x, 1));
-    %x_0 = generateReachableInitState(game, expmpc, X_f, T);
-    x_cl(:, :, 1) = x_0;
-    x_ol(:, :, 1) = x_0;
-    [~, ~, A_sh, ~, ~, ~] = game.VI_generator(x_0);
-    n_sh_constraints = size(A_sh,1);
-    dual = zeros(n_sh_constraints, 1);
+    if isInfHorStable_ol
+        game.VI_generator = computeVIGenerator(game, T);
+        [~, ~, A_sh, ~, ~, ~] = game.VI_generator(x_0(:,:,test) - game.offset_x); % Computed here just to get the number of shared constrains and initialize the dual
+        n_sh_constraints = size(A_sh,1);
+        dual = zeros(n_sh_constraints, 1);
+    end
+    
     for t=1:T_sim
-        [VI.J, VI.F, VI.A_sh, VI.b_sh, VI.A_loc, VI.b_loc, VI.n_x, VI.N]...
-            = game.VI_generator(x_ol(:,t));
         if t>1
-            u_ol_warm_start = u_shift_ol(:,:, :, t-1);
-            u_cl_warm_start = u_shift_cl(:,:, :, t-1);
+            u_ol_warm_start = u_shift_ol(:,:, :, t-1) - repmat(game.offset_u, T, 1, 1);
         else
             u_ol_warm_start = zeros(n_u * T, 1, N);
-            u_cl_warm_start = zeros(n_u * T, 1, N); %unused
         end
-        dual_warm_start = dual;
-        [u_full_traj_ol(:,:,:,t), dual, res, solved(t)] = solveVICentrFB(VI, 10^5, 10^(-4), ...
-            0.001, 0.001, u_ol_warm_start, dual_warm_start);
-        u_ol(:,:,:,t) = u_full_traj_ol(1:n_u,:,:,t);
-        x_ol(:,:,t+1) = evolveState(x_ol(:,:,t), game.A, game.B, u_ol(:, :,:, t), 1, n_u);
-        [u_cl(:, :,:, t), ~, u_full_traj_cl(:,:,:,t)] = solveImplFinHorCL(game, T, x_cl(:,:,t));
-        x_cl(:,:,t+1) = evolveState(x_cl(:,:,t), game.A, game.B, u_cl(:, :,:, t), 1, n_u);
-        % Retrieve last state, used for computing the shifted trajectory
-        x_ol_T = evolveState(x_ol(:,:,t), game.A, game.B, u_full_traj_ol(:,:,:,t), T, n_u);
-        x_cl_T = evolveState(x_cl(:,:,t), game.A, game.B, u_full_traj_cl(:,:,:,t), T, n_u);
-        for i=1:N
-            u_shift_ol(:,:,i,t) = [u_full_traj_ol(n_u+1:end, :, i, t); game.K_ol(:,:,i) * x_ol_T ];
-            u_shift_cl(:,:,i,t) = [u_full_traj_cl(n_u+1:end, :, i, t); game.K_cl(:,:,i) * x_cl_T ];
+        %% Solve open-loop MPC problem
+        if isInfHorStable_ol
+            [VI.J, VI.F, VI.A_sh, VI.b_sh, VI.A_loc, VI.b_loc, VI.n_x, VI.N]...
+                = game.VI_generator(x_ol(:,:,t,test) - game.offset_x);
+            dual_warm_start = dual;
+            [u_full_traj_ol(:,:,:,t), dual, res, solved(t)] = solveVICentrFB(VI, 10^5, 10^(-4), ...
+                0.001, 0.001, u_ol_warm_start, dual_warm_start);
+            u_full_traj_ol(:,:,:,t) = u_full_traj_ol(:,:,:,t) + repmat(game.offset_u, T, 1, 1);
+            u_ol(:,:,:,t,test) = u_full_traj_ol(1:n_u,:,:,t);
+            x_ol(:,:,t+1,test) = evolveState(x_ol(:,:,t,test), game.A, game.B, u_ol(:, :,:, t), 1, n_u);
+            x_ol_T = evolveState(x_ol(:,:,t,test), game.A, game.B, u_full_traj_ol(:,:,:,t), T, n_u);
+            for i=1:N
+                inf_hor_ol_input = game.K_ol(:,:,i) * (x_ol_T - game.offset_x) + game.offset_u(:,:,i);
+                u_shift_ol(:,:,i,t) = [u_full_traj_ol(n_u+1:end, :, i, t); inf_hor_ol_input];
+            end
+        end
+        %% Solve closed-loop MPC problem 
+        if isInfHorStable_cl 
+            [~, ~, u_full_traj_cl(:,:,:,t)] = solveImplFinHorCL(game, T, x_cl(:,:,t,test));
+            u_full_traj_cl(:,:,:,t) = u_full_traj_cl(:,:,:,t) + repmat(game.offset_u, T, 1, 1);
+            u_cl(:,:,:,t,test) = u_full_traj_cl(1:n_u,:,:,t);
+            x_cl(:,:,t+1,test) = evolveState(x_cl(:,:,t,test), game.A, game.B, u_cl(:, :,:, t,test), 1, n_u);
+            % Retrieve last state, used for computing the shifted trajectory
+            x_cl_T = evolveState(x_cl(:,:,t,test), game.A, game.B, u_full_traj_cl(:,:,:,t), T, n_u);
+            % if ~X_f_cl.contains(x_cl_T)
+            %     is_test_valid_cl(test) = false;
+            % else
+            %     is_test_valid_cl(test) = true;
+            % end
+            for i=1:N
+                inf_hor_cl_input = game.K_cl(:,:,i) * (x_cl_T - game.offset_x) + game.offset_u(:,:,i);
+                u_shift_cl(:,:,i,t) = [u_full_traj_cl(n_u+1:end, :, i, t); inf_hor_cl_input];
+            end
+            % Baseline
+            %% ToDo
         end
     end 
-
-    disp("Worker " + num2str(test) + " complete!")
-%    workers_complete = workers_complete + 1;
-%    disp("Workers complete: " + num2str(workers_complete) + " of " + num2str(N_tests))
+    err_shift(test) = 0;
+    % if is_test_valid_ol(test)
+        for t=1:T_sim-1
+            for i=1:N
+                err_shift(test) = max(err_shift(test), norm(u_shift_ol(:,:,i,t) - u_full_traj_ol(:,:,i, t+1)));
+            end
+        end
+        disp("err test = " + num2str(err_shift(test)))
+    % end
+    test = test+1;
 end
 
+save("workspace_variables.mat", "x_ol", "x_cl", "x_bl", "u_ol", "u_cl", "u_bl", "X_f_cl")
+plot_load_flex
 
-
-% save("f_NE_implicit_consistency_result", "u_shifted", "u", "u_full_trajectory");
 disp( "Job complete" )
 
 % END script
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 
 
