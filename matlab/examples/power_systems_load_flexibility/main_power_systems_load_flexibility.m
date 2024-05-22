@@ -14,6 +14,8 @@ rng(seed);
 
 N = 2;
 
+run_cl = false;
+
 n_x = 3 * N ; % {For each agent: Generator speed, battery charge state, deferral of consumption
 n_u = 3; % ramp-up of generator, injected battery power, instantenuous load curbing
 T = 5;
@@ -38,8 +40,8 @@ u_full_traj_bl = zeros(n_u*T, 1, N, T_sim);
 u_shift_bl = zeros(n_u*T, 1, N, T_sim);
 
 % Loads 
-load = rand(N,1);
-collective_load_ref = 10*rand;
+load = 10*ones(N,1);
+collective_load_ref = .5 * sum(load);
 
 param = defineLoadFlexGameParameters(N, load, collective_load_ref);
 
@@ -48,16 +50,17 @@ game = defineLoadFlexGame(N, param);
 [game.P_cl, game.K_cl, isInfHorStable_cl] = solveInfHorCL(game, 1000, 10^(-6));
 [game.P_ol, game.K_ol, isInfHorStable_ol] = solveInfHorOL(game, 1000, 10^(-6));
 
-[game.C_x, game.d_x, game.C_u_loc, game.d_u_loc] = defineLocalConstraints(N, param, game.offset_x, game.offset_u);
-
-[game.C_u_sh, game.d_u_sh] = defineDummySharedInputConstraints(n_u, N);
-% [game.C_u_sh, game.d_u_sh] = defineSharedConstraints(N, p, game.offset_x, game.offset_u);
+[game.C_x, game.d_x, ...
+    game.C_u_loc, game.d_u_loc,...
+    game.C_u_sh, game.d_u_sh,...
+    game.C_u_mix, game.C_x_mix, game.d_mix,...
+    game.offset_x, game.offset_u] = defineConstraints(N, param, game);
 
 x_cl = zeros(n_x, 1, T_sim + 1, N_tests);
 x_ol = zeros(n_x, 1, T_sim + 1, N_tests);
 x_bl = zeros(n_x, 1, T_sim + 1, N_tests);
 
-X_f_cl = computeTerminalSetCL(game);
+% X_f_cl = computeTerminalSetCL(game);
 
 err_shift = zeros(N_tests,1);
 x_0 = zeros(n_x, 1, N_tests);
@@ -67,8 +70,7 @@ test = 1;
 while test<N_tests + 1
     disp( "Test " + num2str(test) )
     %x_0 = randn(n_x,1);
-    r_x_0 = X_f_cl.d * norms_x_0_to_test(1+mod(test, length(norms_x_0_to_test)));
-    x_0(:,:,test) = randVecWithGivenPNorm(X_f_cl.P,r_x_0);
+    x_0(:,:,test) = kron(ones(N,1),[.5; param.max_b_charge(1)/2; 0]);
     % x_0(:,:,test) = [kron(ones(N,1),[.01;0;0]); zeros(G.numedges,1)];
     x_cl(:, :, 1, test) = x_0(:,:,test);
     x_ol(:, :, 1, test) = x_0(:,:,test);
@@ -101,10 +103,17 @@ while test<N_tests + 1
             for i=1:N
                 inf_hor_ol_input = game.K_ol(:,:,i) * (x_ol_T - game.offset_x) + game.offset_u(:,:,i);
                 u_shift_ol(:,:,i,t) = [u_full_traj_ol(n_u+1:end, :, i, t); inf_hor_ol_input];
+                if t==1
+                    inf_hor_ol_without_offset = game.K_ol(:,:,i) * (x_ol_T - game.offset_x);
+                    is_test_valid_ol(test) = all(all(pagemtimes(game.C_u_loc, inf_hor_ol_without_offset)<= game.d_u_loc )) ...
+                                        & all(sum(pagemtimes(game.C_u_sh, inf_hor_ol_input), 3) <= game.d_u_sh) ...
+                                        & all(sum(pagemtimes(game.C_u_mix, inf_hor_ol_input), 3) + game.C_x_mix * (x_ol_T - game.offset_x) <= game.d_mix) ...
+                                        & all( game.C_x * (x_ol_T - game.offset_x) <= game.d_x);
+                end
             end
         end
         %% Solve closed-loop MPC problem 
-        if isInfHorStable_cl 
+        if isInfHorStable_cl && run_cl
             [~, ~, u_full_traj_cl(:,:,:,t)] = solveImplFinHorCL(game, T, x_cl(:,:,t,test));
             u_full_traj_cl(:,:,:,t) = u_full_traj_cl(:,:,:,t) + repmat(game.offset_u, T, 1, 1);
             u_cl(:,:,:,t,test) = u_full_traj_cl(1:n_u,:,:,t);
@@ -136,7 +145,7 @@ while test<N_tests + 1
     test = test+1;
 end
 
-save("workspace_variables.mat", "x_ol", "x_cl", "x_bl", "u_ol", "u_cl", "u_bl", "X_f_cl")
+save("workspace_variables.mat", "x_ol", "x_cl", "x_bl", "u_ol", "u_cl", "u_bl")
 plot_load_flex
 
 disp( "Job complete" )

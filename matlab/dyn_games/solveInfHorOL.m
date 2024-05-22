@@ -70,12 +70,12 @@ end
 if err > eps_err
     disp("[solve_open_loop_inf_hor_problem] Could not find solution")
 end
-for i=1:N
-    if min(eig(P(:,:,i))) < 0
-        warning("The open loop P is non-positive definite")
-    end
-end
-game.A_ol = A + sum(pagemtimes(B, K), 3);
+% for i=1:N
+%     if min(eig(P(:,:,i))) < 0
+%         warning("The open loop P is non-positive definite")
+%     end
+% end
+% A_ol = A + sum(pagemtimes(B, K), 3);
 
 if max(abs(eig(A + sum(pagemtimes(B, K), 3)))) > 1.001
     warning("The infinite horizon OL-GNE has an unstable dynamics")
