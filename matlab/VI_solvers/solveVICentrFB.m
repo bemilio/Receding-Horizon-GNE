@@ -46,6 +46,9 @@ for k =1:n_iter
     [x, d] = run_FB_once(x, d, VI.F, VI.A_sh, VI.b_sh, projection, p_step, d_step);
     if mod(k,20)==0
         r = compute_residual(x,d, VI.F, VI.A_sh, VI.b_sh, projection);
+        if mod(k,300)==0
+            disp("Residual: " + num2str(r));
+        end
         if r < eps_err
             solved = true;
             break

@@ -9,17 +9,20 @@ addpath(genpath('../../')) % add all folders in the root folder
 rmpath(genpath('../')) % remove folders of the other examples (function names are conflicting)
 addpath(genpath(pwd)) % re-add the subfolders of this example
 
+load new_york_parsed_housholds.mat
+
 seed = 1;
 rng(seed); 
 
-N = 2;
+N = 5;
 
 run_cl = false;
+trackin_problem = true; % If true, the game is re-initialized at every timestep with the current load data
 
 n_x = 3 * N ; % {For each agent: Generator speed, battery charge state, deferral of consumption
 n_u = 3; % ramp-up of generator, injected battery power, instantenuous load curbing
-T = 5;
-T_sim = 20;
+T = 10;
+T_sim = 193;
 
 N_tests = 1;
 
@@ -40,10 +43,21 @@ u_full_traj_bl = zeros(n_u*T, 1, N, T_sim);
 u_shift_bl = zeros(n_u*T, 1, N, T_sim);
 
 % Loads 
-load = 10*ones(N,1);
-collective_load_ref = .5 * sum(load);
+if trackin_problem
+    grid_load_series = zeros(T_sim, N);
+    for i=1:N
+        variableName = ['Load_', num2str(i)]; 
+        grid_load_series(:,i) = grid_load_data.(variableName)(1:T_sim);
+    end
+    grid_load = mean(grid_load_series(1:1+T,:), 1)';
+    collective_load_ref_series = 1*N*ones(T_sim,1);
+    collective_load_ref = collective_load_ref_series(1);
+else
+    grid_load = 10*ones(N,1);
+    collective_load_ref = .5 * sum(grid_load);
+end
 
-param = defineLoadFlexGameParameters(N, load, collective_load_ref);
+param = defineLoadFlexGameParameters(N, grid_load, collective_load_ref);
 
 game = defineLoadFlexGame(N, param);
 
@@ -54,7 +68,7 @@ game = defineLoadFlexGame(N, param);
     game.C_u_loc, game.d_u_loc,...
     game.C_u_sh, game.d_u_sh,...
     game.C_u_mix, game.C_x_mix, game.d_mix,...
-    game.offset_x, game.offset_u] = defineConstraints(N, param, game);
+    game.offset_x, game.offset_u] = defineConstraintsAndTarget(N, param, game);
 
 x_cl = zeros(n_x, 1, T_sim + 1, N_tests);
 x_ol = zeros(n_x, 1, T_sim + 1, N_tests);
@@ -84,11 +98,28 @@ while test<N_tests + 1
     end
     
     for t=1:T_sim
+        disp("timestep = " + num2str(t));
         if t>1
             u_ol_warm_start = u_shift_ol(:,:, :, t-1) - repmat(game.offset_u, T, 1, 1);
         else
             u_ol_warm_start = zeros(n_u * T, 1, N);
         end
+        
+        if trackin_problem
+            % Reinitialize problem with current load data
+            param.load(:,:) = mean(grid_load_series(t:min(t+T, T_sim),:), 1)';
+            if any(isnan(param.load))
+                disp("*internal scream*")
+            end
+            param.collective_load_ref = collective_load_ref_series(t);
+            [game.C_x, game.d_x, ...
+                game.C_u_loc, game.d_u_loc,...
+                game.C_u_sh, game.d_u_sh,...
+                game.C_u_mix, game.C_x_mix, game.d_mix,...
+                game.offset_x, game.offset_u] = defineConstraintsAndTarget(N, param, game);
+            game.VI_generator = computeVIGenerator(game, T);
+        end
+
         %% Solve open-loop MPC problem
         if isInfHorStable_ol
             [VI.J, VI.F, VI.A_sh, VI.b_sh, VI.A_loc, VI.b_loc, VI.n_x, VI.N]...
@@ -114,7 +145,8 @@ while test<N_tests + 1
         end
         %% Solve closed-loop MPC problem 
         if isInfHorStable_cl && run_cl
-            [~, ~, u_full_traj_cl(:,:,:,t)] = solveImplFinHorCL(game, T, x_cl(:,:,t,test));
+            
+            [~, ~, u_full_traj_cl(:,:,:,t)] = solveImplFinHorCL(game, T, x_cl(:,:,t,test) - game.offset_x);
             u_full_traj_cl(:,:,:,t) = u_full_traj_cl(:,:,:,t) + repmat(game.offset_u, T, 1, 1);
             u_cl(:,:,:,t,test) = u_full_traj_cl(1:n_u,:,:,t);
             x_cl(:,:,t+1,test) = evolveState(x_cl(:,:,t,test), game.A, game.B, u_cl(:, :,:, t,test), 1, n_u);
