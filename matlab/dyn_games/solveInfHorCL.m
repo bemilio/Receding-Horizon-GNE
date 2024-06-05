@@ -1,6 +1,4 @@
 function [P,K, isStable, A_cl] = solveInfHorCL(game, n_iter, eps_err)
-%SOLVEINFHORCL 
-
 P = zeros(game.n_x, game.n_x, game.N);
 K = zeros(game.n_u, game.n_x, game.N);
 A = game.A;
@@ -23,6 +21,15 @@ if ~is_detectable(A, Q_all)
     warning("[solveInfHorCL]: detectability assump. not satisfied")
 end
 
+% Initialize to a stabilizing controller
+R_all = eye(N*n_u);
+P_all = idare(A, B_all, Q_all, R_all);
+K_all = -inv(R_all + B_all'*P_all*B_all) * B_all' * P_all * A;
+for i =1:N
+    indexes = (i-1)*n_u+1: i*n_u;
+    K(:,:,i) = K_all(indexes,:);
+end
+
 % (adapted from sassano 22): 
 % solve P[i] = Q[i] + K[i]'R[i]K[i] + A_cl' P[i] A_cl 
 % b iterating the Riccati equation
@@ -35,7 +42,7 @@ for k=1:n_iter
         K(:,:,i) = - inv(R(:,:,i) + B(:,:,i)' * P(:,:,i) * B(:,:,i)) * ...
             B(:,:,i)' * P(:,:,i) * A_cl_not_i;
     end
-    if mod(n_iter,20)==0
+    if mod(k,20)==0
         % Test solution by verifying (6.28) in Basar book
         err = 0;
         A_cl = A + sum(pagemtimes(B, K), 3);
