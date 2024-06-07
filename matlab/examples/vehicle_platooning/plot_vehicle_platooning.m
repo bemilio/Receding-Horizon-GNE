@@ -1,48 +1,66 @@
 close all
 
-n_x_per_agent = 3;
+n_x_per_agent = 2;
+p_ol = zeros(T_sim, N);
+v_ol = zeros(T_sim, N);
+p_cl = zeros(T_sim, N);
+v_cl = zeros(T_sim, N);
+%% Conversion from error variables to actual speed/position
 for t = 1:T_sim
-    indexes_velocity_gen = 1:n_x_per_agent:n_x;
-    cum_gen_power = param.v_to_P'*x_ol(indexes_velocity_gen, t);
-    cum_battery_power = sum(u_ol(2,:,:,t));
-    cum_load = sum(grid_load_series(t,:)) + sum(u_ol(3,:,:,t));
-    cum_consumed_power_at_grid_ol(t) = cum_load + cum_battery_power - cum_gen_power;
+    [p_ol(t,:), v_ol(t,:)] = convertStateToPosVel(x_ol(:,1,t),...
+                param.v_des_1, param.d_des, param.headway_time);
 end
 if run_cl
     for t = 1:T_sim
-        indexes_velocity_gen = 1:n_x_per_agent:n_x;
-        cum_gen_power = param.v_to_P'*x_cl(indexes_velocity_gen, t);
-        cum_battery_power = sum(u_cl(2,:,:,t));
-        cum_load = sum(load) + sum(u_cl(3,:,:,t));
-        cum_consumed_power_at_grid_cl(t) = cum_load + cum_battery_power - cum_gen_power;
+        [p_cl(t,:), v_cl(t,:)] =...
+            convertStateToPosVel(x_ol(:,1,t),...
+                param.v_des_1, param.d_des, param.headway_time);
     end
 end
 
 % Plot the sequence
-figure; % Create a new figure window
-plot(cum_consumed_power_at_grid_ol, '-o', 'DisplayName', "OL-NE");
+figure; 
 hold on
-plot(sum(grid_load_series'), '-o', 'DisplayName', "Nom. cum. load");
-print('power_trajectory_load_flex', '-dpng', '-r600');  % Save with 300 dpi resolution
-
-
-if run_cl
-    plot(cum_consumed_power_at_grid_cl, '-o');
+colors = lines(N);
+x = linspace(0, (T_sim - 1) * param.T_sampl, T_sim);
+for i=1:N
+    selectedColor = colors(i, :);
+    plot(x, p_ol(:,i), '-o', 'DisplayName', "Agent " + num2str(i), 'Color',selectedColor);
+    if i~=1
+        % Plot the safety distance
+        % Define the lower boundary for the shaded area
+        p_ol_lower = p_ol(:,i) - 20 - v_ol(:,i) * param.headway_time(i);
+        % Define the x and y coordinates for the shaded area
+        x_fill = [x, fliplr(x)];
+        y_fill = [p_ol(:,i)',fliplr(p_ol_lower')];
+        fill(x_fill, y_fill, colors(i,:), 'FaceAlpha', 0.3, 'EdgeColor', 'none','HandleVisibility', 'off');
+    end
 end 
-xlabel('t');
-ylabel('Power main grid');
-grid on;
-legend
-hold off
-
-figure
-plot(squeeze(x_ol(1,1,:))'*100, '-o', 'DisplayName', "Gen. speed");
+%TODO: plot closed loop
 hold on
-plot(squeeze(x_ol(2,1,:))'*100/param.max_b_charge(1), '-o', 'DisplayName', "Batt. charge");
-plot(squeeze(x_ol(3,1,:))'*100/param.max_load_delay(1), '-o', 'DisplayName', "Cumul. load deferral");
+if run_cl
+    plot(p_cl, '-o','DisplayName', "CL-NE");
+end
 
 xlabel('t');
-ylabel('(%)');
+ylabel('$p_i$', 'Interpreter','latex');
 grid on;
 legend
+print('position.png', '-dpng', '-r600');  % Save with 600 dpi resolution
+
+figure;
+hold on
+indexes_position = 1:n_x_per_agent:n_x;
+indexes_speed = 2:n_x_per_agent:n_x;
+for i=1:N
+    selectedColor = colors(i, :);
+    plot(v_ol(:,i), '-o', 'DisplayName', "position",'DisplayName', "Agent " + num2str(i), 'Color',selectedColor);
+end
+yline(param.max_speed(i), 'Color', [1 0.1 0.1], 'LineStyle', '--', 'LineWidth', 2,'HandleVisibility', 'off');
+yline(param.min_speed(i), 'Color', [1 0.1 0.1], 'LineStyle', '--', 'LineWidth', 2,'HandleVisibility', 'off');
+xlabel('t');
+ylabel('$v_i$', 'Interpreter','latex');
+grid on
+legend
+print('position.png', '-dpng', '-r600');  % Save with 600 dpi resolution
 

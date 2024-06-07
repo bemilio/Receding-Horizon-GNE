@@ -115,7 +115,8 @@ function [J,F, A_sh, b_sh, A_loc, b_loc, n_x, N] = genVIFromInitialState( ...
                                         C_u_sh,d_u_sh, ...
                                         C_x,D_x,d_x, ...
                                         C_mixed, D_mixed, d_mixed, ...
-                                        x_0, N, n_u, T_hor)
+                                        x_0, N, n_u, T_hor)    
+
     % given an n*m*p array createa a np * m * p array, where each page of
     % the new array is the column stack of all pages of the original array
     rep = @(u) repmat(reshape(u, [n_u * N * T_hor,1] ), 1,1,N); 
@@ -151,4 +152,21 @@ function [J,F, A_sh, b_sh, A_loc, b_loc, n_x, N] = genVIFromInitialState( ...
                        d_mixed_x0(:,:,i) + d_mixed(:,:,i)];
     end
     n_x = n_u * T_hor;
+
+    % Check if feasible
+    A_all = [];
+    b_all = [];
+    for i=1:N
+        A_all = blkdiag(A_all, A_loc(:,:,i));
+        b_all = [b_all; b_loc(:,:,i)];
+    end
+    A_all = [A_all;
+             reshape(A_sh, [size(A_sh,1), size(A_sh,2) * size(A_sh, 3)])];
+    b_all = [b_all; sum(b_sh, 3)];
+    options = optimoptions('quadprog','Display','off');
+    [~,~,exit_flag] = quadprog(zeros(n_x*N), zeros(n_x*N,1), A_all, b_all, [],[],[],[],[],options);
+    if exit_flag~=1
+        warning("The VI is infeasible")
+    end
+
 end

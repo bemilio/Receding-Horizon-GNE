@@ -9,16 +9,21 @@ addpath(genpath('../../')) % add all folders in the root folder
 rmpath(genpath('../')) % remove folders of the other examples (function names are conflicting)
 addpath(genpath(pwd)) % re-add the subfolders of this example
 
+
+run_cl = false;
+
 seed = 1;
 rng(seed); 
+eps = 10^(-4);
 
-N = 5; %not counting the leading vehicle
-
-n_x = 2 * N ; % {For each agent: position error, speed error
-n_u = 1; % ramp-up of generator, injected battery power, instantenuous load curbing
+N = 5; 
+% state For each agent: position error, speed error. 
+% %Note: the position error of the leading vehicle is constant 0 (dummy state)
+n_x = 2 * N; 
+n_u = 1; % acceleration
 T = 10;
 T_sampl = 1;
-T_sim = 50;
+T_sim = 200;
 
 N_tests = 1;
 
@@ -38,7 +43,7 @@ u_bl = zeros(n_u, 1, N, T_sim);
 u_full_traj_bl = zeros(n_u*T, 1, N, T_sim);
 u_shift_bl = zeros(n_u*T, 1, N, T_sim);
 
-param = defineVehiclePlatooningGameParameters();
+param = defineVehiclePlatooningGameParameters(N);
 game = defineVehiclePlatooningGame(N, param);
 
 [game.P_cl, game.K_cl, isInfHorStable_cl] = solveInfHorCL(game, 1000, 10^(-6));
@@ -46,8 +51,10 @@ game = defineVehiclePlatooningGame(N, param);
 
 [game.C_x, game.d_x, ...
     game.C_u_loc, game.d_u_loc,...
-    game.C_u_sh, game.d_u_sh,...
-    game.C_u_mix, game.C_x_mix, game.d_mix] = defineConstraints(N, param, game);
+    game.C_u_sh,  game.d_u_sh,...
+    game.C_u_mix, game.C_x_mix, game.d_mix] = defineConstraints(N, param);
+
+X_f_ol = computeTerminalSetOL(game);
 
 x_cl = zeros(n_x, 1, T_sim + 1, N_tests);
 x_ol = zeros(n_x, 1, T_sim + 1, N_tests);
@@ -56,27 +63,35 @@ x_bl = zeros(n_x, 1, T_sim + 1, N_tests);
 % X_f_cl = computeTerminalSetCL(game);
 
 err_shift = zeros(N_tests,1);
-x_0 = zeros(n_x, 1, N_tests);
+%% Create an initial state in position-velocity coordinates and convert 
+% % Position is relative with the first agent and meas. unit is meters
+x_0_p = (0:-100:-100*(N-1))' +  [0;15*randn(N-1,1)];
+x_0_v = (param.max_speed - param.min_speed)/2 + param.min_speed...
+                         + 0*(.5-rand(N,1)) .* min(param.max_speed - param.min_speed);
+
+x_0 = convertPosVelToState(x_0_p, x_0_v, param.v_des_1, param.d_des, param.headway_time);
 
 test = 1;
+%% Run tests
 while test<N_tests + 1
     disp( "Test " + num2str(test) )
-    x_0 = randn(n_x,1);
+    % x_0 = 10*randn(n_x,1);
+    % x_0(1) = 0;
     x_cl(:, :, 1, test) = x_0(:,:,test);
     x_ol(:, :, 1, test) = x_0(:,:,test);
     x_bl(:,:,1, test) = x_0(:,:,test);
         
     if isInfHorStable_ol
         game.VI_generator = computeVIGenerator(game, T);
-        [~, ~, A_sh, ~, ~, ~] = game.VI_generator(x_0(:,:,test) - game.offset_x); % Computed here just to get the number of shared constrains and initialize the dual
+        [~, ~, A_sh, ~, ~, ~] = game.VI_generator(x_0(:,:,test)); % Computed here just to get the number of shared constrains and initialize the dual
         n_sh_constraints = size(A_sh,1);
         dual = zeros(n_sh_constraints, 1);
     end
-    
+    t_OL_assumpt_satisfied = zeros(N_tests,1);
     for t=1:T_sim
         disp("timestep = " + num2str(t));
         if t>1
-            u_ol_warm_start = u_shift_ol(:,:, :, t-1) - repmat(game.offset_u, T, 1, 1);
+            u_ol_warm_start = u_shift_ol(:,:, :, t-1);
         else
             u_ol_warm_start = zeros(n_u * T, 1, N);
         end
@@ -84,31 +99,35 @@ while test<N_tests + 1
         %% Solve open-loop MPC problem
         if isInfHorStable_ol
             [VI.J, VI.F, VI.A_sh, VI.b_sh, VI.A_loc, VI.b_loc, VI.n_x, VI.N]...
-                = game.VI_generator(x_ol(:,:,t,test) - game.offset_x);
+                = game.VI_generator(x_ol(:,:,t,test));
             dual_warm_start = dual;
-            [u_full_traj_ol(:,:,:,t), dual, res, solved(t)] = solveVICentrFB(VI, 10^5, 10^(-4), ...
-                0.001, 0.001, u_ol_warm_start, dual_warm_start);
-            u_full_traj_ol(:,:,:,t) = u_full_traj_ol(:,:,:,t) + repmat(game.offset_u, T, 1, 1);
+            [u_full_traj_ol(:,:,:,t), dual, res, solved(t)] = solveVICentrFB(VI, 10^6, eps, ...
+                0.05, 0.05, u_ol_warm_start, dual_warm_start);
+            u_full_traj_ol(:,:,:,t) = u_full_traj_ol(:,:,:,t);
             u_ol(:,:,:,t,test) = u_full_traj_ol(1:n_u,:,:,t);
             x_ol(:,:,t+1,test) = evolveState(x_ol(:,:,t,test), game.A, game.B, u_ol(:, :,:, t), 1, n_u);
             x_ol_T = evolveState(x_ol(:,:,t,test), game.A, game.B, u_full_traj_ol(:,:,:,t), T, n_u);
+            inf_hor_ol_input = pagemtimes(game.K_ol,x_ol_T);
             for i=1:N
-                inf_hor_ol_input = game.K_ol(:,:,i) * (x_ol_T - game.offset_x) + game.offset_u(:,:,i);
-                u_shift_ol(:,:,i,t) = [u_full_traj_ol(n_u+1:end, :, i, t); inf_hor_ol_input];
-                if t==1
-                    inf_hor_ol_without_offset = game.K_ol(:,:,i) * (x_ol_T - game.offset_x);
-                    is_test_valid_ol(test) = all(all(pagemtimes(game.C_u_loc, inf_hor_ol_without_offset)<= game.d_u_loc )) ...
-                                        & all(sum(pagemtimes(game.C_u_sh, inf_hor_ol_input), 3) <= game.d_u_sh) ...
-                                        & all(sum(pagemtimes(game.C_u_mix, inf_hor_ol_input), 3) + game.C_x_mix * (x_ol_T - game.offset_x) <= game.d_mix) ...
-                                        & all( game.C_x * (x_ol_T - game.offset_x) <= game.d_x);
-                end
+                u_shift_ol(:,:,i,t) = [u_full_traj_ol(n_u+1:end, :, i, t); inf_hor_ol_input(:,:,i)];
             end
+            % if t==1
+                % This is actually not enough
+                % is_test_valid_ol(test) = all(all(pagemtimes(game.C_u_loc, inf_hor_ol_input) <= game.d_u_loc - eps)) ...
+                %                     & all(sum(pagemtimes(game.C_u_sh, inf_hor_ol_input), 3) <= game.d_u_sh-eps) ...
+                %                     & all(sum(pagemtimes(game.C_u_mix, inf_hor_ol_input), 3) + game.C_x_mix * x_ol_T <= game.d_mix-eps) ...
+                %                     & all( game.C_x * x_ol_T <= game.d_x-eps);
+            % end
+            if checkTerminalConditionOL(x_ol_T, X_f_ol) && t_OL_assumpt_satisfied(test) == 0
+                t_OL_assumpt_satisfied(test) = t;
+            end
+
         end
         %% Solve closed-loop MPC problem 
         if isInfHorStable_cl && run_cl
             
-            [~, ~, u_full_traj_cl(:,:,:,t)] = solveImplFinHorCL(game, T, x_cl(:,:,t,test) - game.offset_x);
-            u_full_traj_cl(:,:,:,t) = u_full_traj_cl(:,:,:,t) + repmat(game.offset_u, T, 1, 1);
+            [~, ~, u_full_traj_cl(:,:,:,t)] = solveImplFinHorCL(game, T, x_cl(:,:,t,test));
+            u_full_traj_cl(:,:,:,t) = u_full_traj_cl(:,:,:,t);
             u_cl(:,:,:,t,test) = u_full_traj_cl(1:n_u,:,:,t);
             x_cl(:,:,t+1,test) = evolveState(x_cl(:,:,t,test), game.A, game.B, u_cl(:, :,:, t,test), 1, n_u);
             % Retrieve last state, used for computing the shifted trajectory
@@ -119,7 +138,7 @@ while test<N_tests + 1
             %     is_test_valid_cl(test) = true;
             % end
             for i=1:N
-                inf_hor_cl_input = game.K_cl(:,:,i) * (x_cl_T - game.offset_x) + game.offset_u(:,:,i);
+                inf_hor_cl_input = game.K_cl(:,:,i) * x_cl_T;
                 u_shift_cl(:,:,i,t) = [u_full_traj_cl(n_u+1:end, :, i, t); inf_hor_cl_input];
             end
             % Baseline
@@ -128,7 +147,7 @@ while test<N_tests + 1
     end 
     err_shift(test) = 0;
     % if is_test_valid_ol(test)
-        for t=1:T_sim-1
+        for t=t_OL_assumpt_satisfied(test):T_sim-1
             for i=1:N
                 err_shift(test) = max(err_shift(test), norm(u_shift_ol(:,:,i,t) - u_full_traj_ol(:,:,i, t+1)));
             end
@@ -139,7 +158,7 @@ while test<N_tests + 1
 end
 
 save("workspace_variables.mat", "x_ol", "x_cl", "x_bl", "u_ol", "u_cl", "u_bl")
-plot_load_flex
+plot_vehicle_platooning
 
 disp( "Job complete" )
 

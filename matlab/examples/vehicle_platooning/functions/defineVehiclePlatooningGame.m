@@ -7,23 +7,20 @@ n_agent_states = 2; % position, speed
 n_x = N*n_agent_states;
 n_u = 1; % Acceleration 
 
-%% Define pre-stabilizing controller
-K = zeros(n_u,n_x,N);
-gain = 0.1;
-for i=1:N
-    % Local proportional controller
-    indexes = (i-1)*n_agent_states+1: i*n_agent_states;
-    K(:,indexes, i) = gain*[1, 0]; % Proportional controller on position
-end
-
 
 %% Define dynamics
 game.B = zeros(n_x, n_u, N);
 for i=1:N
     indexes = (i-1)*n_agent_states+1: i*n_agent_states;
     indexes_succ = i*n_agent_states+1: (i+1)*n_agent_states;
-    game.B(indexes,:,i) = [ -p.headway_time*p.T_sampl- p.T_sampl^2/2; 
-                            -p.T_sampl];
+    if i>1
+        game.B(indexes,:,i) = [ -p.headway_time(i)*p.T_sampl- p.T_sampl^2/2; 
+                                -p.T_sampl];
+    end
+    if i==1
+        game.B(indexes,:,i) = [ 0; 
+                                -p.T_sampl];
+    end
     if i<N
         game.B(indexes_succ,:,i) = [p.T_sampl^2/2; 
                                     p.T_sampl];
@@ -34,11 +31,18 @@ game.A = zeros(n_x, n_x);
 
 for i=1:N
     indexes = (i-1)*n_agent_states+1: i*n_agent_states;
-    game.A(indexes, indexes) = [ 1, p.T_sampl;
-                                 0,       1];
+    if i~=1
+        game.A(indexes, indexes) = [ 1, p.T_sampl;
+                                     0,       1];
+    else
+        % Position error of the leading agent is a dummy state, but A needs
+        % to be non-singular. Remember to set the initial state to 0.
+        game.A(indexes, indexes) = [ 0.1,       0;
+                                     0,         1];
+    end
 end
 % Include the pre-stabilizing controllers
-game.A = game.A + sum(pagemtimes(game.B, K), 3);
+game.A = game.A + sum(pagemtimes(game.B, p.K), 3);
 if max(abs(eig(game.A)))>1
     warning("[defineVehiclePlatooningGame] The pre-stabilizing controllers do not stabilize the system. The OL-NE will likely not work.")
 end

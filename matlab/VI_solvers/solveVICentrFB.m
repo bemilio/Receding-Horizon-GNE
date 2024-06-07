@@ -6,7 +6,7 @@ function [x, d, r, solved] = solveVICentrFB(VI, ...
                               x, ...
                               d)
 if ~exist ('n_iter', 'var')
-    n_iter = 10^(5);
+    n_iter = 10^(6);
 end
 
 if ~exist ('eps_err', 'var')
@@ -18,7 +18,7 @@ if ~exist ('p_step', 'var')
 end
 
 if ~exist ('d_step', 'var')
-    d_step = 0.001;
+    d_step = 0.01;
 end
 
 if ~exist ('x', 'var')
@@ -60,7 +60,7 @@ end
 
 function [x_new,d_new] = run_FB_once(x,d, F, A_sh, b_sh, B, p_step, d_step)
     x_new = B(x - p_step*(F(x) + pagemtimes(T3D(A_sh), d)));
-    d_half = 2 * sum(pagemtimes(A_sh, x_new) - pagemtimes(A_sh, x) - b_sh, 3);
+    d_half = sum(2*pagemtimes(A_sh, x_new) - pagemtimes(A_sh, x) - b_sh, 3);
     d_new = max(d + d_step * d_half, 0);    
 end
 
