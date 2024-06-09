@@ -20,47 +20,60 @@ end
 
 % Plot the sequence
 figure; 
+ax1 = subplot(2,1,1); % 2 rows, 1 column, second subplot
 hold on
 colors = lines(N);
 x = linspace(0, (T_sim - 1) * param.T_sampl, T_sim);
+desired_position = 0; % We iteratively sum the desired distance of each agent to compute this value
 for i=1:N
     selectedColor = colors(i, :);
-    plot(x, p_ol(:,i), '-o', 'DisplayName', "Agent " + num2str(i), 'Color',selectedColor);
+    plot(x, p_ol(:,i), '-', 'DisplayName', "Agent " + num2str(i), 'Color',selectedColor, 'LineWidth',1.5);
     if i~=1
+        % Plot desired position
+        desired_position = desired_position + param.d_des(i) + param.headway_time(i) * param.v_des_1;
+        yline(desired_position, 'Color', selectedColor, 'LineStyle', ':', 'LineWidth', 2,'HandleVisibility', 'off');
         % Plot the safety distance
         % Define the lower boundary for the shaded area
         p_ol_lower = p_ol(:,i) - 20 - v_ol(:,i) * param.headway_time(i);
         % Define the x and y coordinates for the shaded area
         x_fill = [x, fliplr(x)];
         y_fill = [p_ol(:,i)',fliplr(p_ol_lower')];
-        fill(x_fill, y_fill, colors(i,:), 'FaceAlpha', 0.3, 'EdgeColor', 'none','HandleVisibility', 'off');
+        fill(x_fill, y_fill, colors(i,:), 'FaceAlpha', 0.2, 'EdgeColor', 'none','HandleVisibility', 'off');
     end
 end 
 %TODO: plot closed loop
 hold on
 if run_cl
-    plot(p_cl, '-o','DisplayName', "CL-NE");
+    plot(p_cl, '-','DisplayName', "CL-NE");
 end
-
-xlabel('t');
-ylabel('$p_i$', 'Interpreter','latex');
+ylabel('$p_i$ (m)', 'Interpreter','latex');
 grid on;
+set(gca, 'XTickLabel', []); % Remove x-tick labels from the top subplot
 legend
-print('position.png', '-dpng', '-r600');  % Save with 600 dpi resolution
 
-figure;
+ax2 = subplot(2,1,2); % 2 rows, 1 column, second subplot
 hold on
 indexes_position = 1:n_x_per_agent:n_x;
 indexes_speed = 2:n_x_per_agent:n_x;
 for i=1:N
     selectedColor = colors(i, :);
-    plot(v_ol(:,i), '-o', 'DisplayName', "position",'DisplayName', "Agent " + num2str(i), 'Color',selectedColor);
+    plot(x,v_ol(:,i), '-', 'DisplayName', "position",'DisplayName', "Agent " + num2str(i), 'Color',selectedColor,'LineWidth',1.5);
 end
 yline(param.max_speed(i), 'Color', [1 0.1 0.1], 'LineStyle', '--', 'LineWidth', 2,'HandleVisibility', 'off');
 yline(param.min_speed(i), 'Color', [1 0.1 0.1], 'LineStyle', '--', 'LineWidth', 2,'HandleVisibility', 'off');
-xlabel('t');
-ylabel('$v_i$', 'Interpreter','latex');
+yline(param.v_des_1, 'Color', colors(1, :), 'LineStyle', ':', 'LineWidth', 2,'HandleVisibility', 'off');
+xlabel('$t$', 'Interpreter','latex');
+ylabel('$v_i$ (m/s)', 'Interpreter','latex');
 grid on
-legend
-print('position.png', '-dpng', '-r600');  % Save with 600 dpi resolution
+
+% Link the x-axes
+linkaxes([ax1, ax2], 'x');
+% Remove the gap between the plots
+pos1 = get(ax1, 'Position');
+pos2 = get(ax2, 'Position');
+gap = 0.05; % Small gap between the plots
+pos1(2) = pos2(2) + pos2(4) + gap;
+set(ax1, 'Position', pos1);
+
+print('pos_velocity.png', '-dpng', '-r600');  % Save with 600 dpi resolution
 

@@ -65,9 +65,9 @@ x_bl = zeros(n_x, 1, T_sim + 1, N_tests);
 err_shift = zeros(N_tests,1);
 %% Create an initial state in position-velocity coordinates and convert 
 % % Position is relative with the first agent and meas. unit is meters
-x_0_p = (0:-100:-100*(N-1))' +  [0;15*randn(N-1,1)];
+x_0_p = (0:-90:-90*(N-1))' +  [0;15*randn(N-1,1)];
 x_0_v = (param.max_speed - param.min_speed)/2 + param.min_speed...
-                         + 0*(.5-rand(N,1)) .* min(param.max_speed - param.min_speed);
+                         + (.5-rand(N,1)) .* min(param.max_speed - param.min_speed);
 
 x_0 = convertPosVelToState(x_0_p, x_0_v, param.v_des_1, param.d_des, param.headway_time);
 
@@ -102,7 +102,7 @@ while test<N_tests + 1
                 = game.VI_generator(x_ol(:,:,t,test));
             dual_warm_start = dual;
             [u_full_traj_ol(:,:,:,t), dual, res, solved(t)] = solveVICentrFB(VI, 10^6, eps, ...
-                0.05, 0.05, u_ol_warm_start, dual_warm_start);
+                0.2, 0.2, u_ol_warm_start, dual_warm_start);
             u_full_traj_ol(:,:,:,t) = u_full_traj_ol(:,:,:,t);
             u_ol(:,:,:,t,test) = u_full_traj_ol(1:n_u,:,:,t);
             x_ol(:,:,t+1,test) = evolveState(x_ol(:,:,t,test), game.A, game.B, u_ol(:, :,:, t), 1, n_u);
