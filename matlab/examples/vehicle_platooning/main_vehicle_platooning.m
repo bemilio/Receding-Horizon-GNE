@@ -10,7 +10,8 @@ rmpath(genpath('../')) % remove folders of the other examples (function names ar
 addpath(genpath(pwd)) % re-add the subfolders of this example
 
 
-run_cl = false;
+run_cl = true;
+use_cl_surrogate = true;
 
 seed = 1;
 rng(seed); 
@@ -66,8 +67,7 @@ err_shift = zeros(N_tests,1);
 %% Create an initial state in position-velocity coordinates and convert 
 % % Position is relative with the first agent and meas. unit is meters
 x_0_p = (0:-90:-90*(N-1))' +  [0;15*randn(N-1,1)];
-x_0_v = (param.max_speed - param.min_speed)/2 + param.min_speed...
-                         + (.5-rand(N,1)) .* min(param.max_speed - param.min_speed);
+x_0_v = (param.max_speed - param.min_speed)/2 + .3* param.min_speed + (.5-rand(N,1)) .* min(param.max_speed - param.min_speed);
 
 x_0 = convertPosVelToState(x_0_p, x_0_v, param.v_des_1, param.d_des, param.headway_time);
 
@@ -82,26 +82,34 @@ while test<N_tests + 1
     x_bl(:,:,1, test) = x_0(:,:,test);
         
     if isInfHorStable_ol
-        game.VI_generator = computeVIGenerator(game, T);
-        [~, ~, A_sh, ~, ~, ~] = game.VI_generator(x_0(:,:,test)); % Computed here just to get the number of shared constrains and initialize the dual
+        game.VI_gen_OL = computeVIGenerator(game, T);
+        [~, ~, A_sh, ~, ~, ~] = game.VI_gen_OL(x_0(:,:,test)); % Computed here just to get the number of shared constrains and initialize the dual
         n_sh_constraints = size(A_sh,1);
-        dual = zeros(n_sh_constraints, 1);
+        dual_ol = zeros(n_sh_constraints, 1);
+        if use_cl_surrogate
+            game.VI_gen_surrogate_CL = computeVIGeneratorSurrogateCL(game,T);
+            [~, ~, A_sh_cl, ~, ~, ~] = game.VI_gen_surrogate_CL(x_0(:,:,test)); % Computed here just to get the number of shared constrains and initialize the dual
+            n_sh_constraints_cl = size(A_sh_cl,1);
+            dual_cl = zeros(n_sh_constraints_cl,1);
+        end
     end
     t_OL_assumpt_satisfied = zeros(N_tests,1);
     for t=1:T_sim
         disp("timestep = " + num2str(t));
         if t>1
             u_ol_warm_start = u_shift_ol(:,:, :, t-1);
+            u_cl_warm_start = u_shift_cl(:,:, :, t-1);
         else
             u_ol_warm_start = zeros(n_u * T, 1, N);
+            u_cl_warm_start = zeros(n_u * T, 1, N);
         end
 
         %% Solve open-loop MPC problem
         if isInfHorStable_ol
             [VI.J, VI.F, VI.A_sh, VI.b_sh, VI.A_loc, VI.b_loc, VI.n_x, VI.N]...
-                = game.VI_generator(x_ol(:,:,t,test));
-            dual_warm_start = dual;
-            [u_full_traj_ol(:,:,:,t), dual, res, solved(t)] = solveVICentrFB(VI, 10^6, eps, ...
+                = game.VI_gen_OL(x_ol(:,:,t,test));
+            dual_warm_start = dual_ol;
+            [u_full_traj_ol(:,:,:,t), dual_ol, res, solved(t)] = solveVICentrFB(VI, 10^6, eps, ...
                 0.2, 0.2, u_ol_warm_start, dual_warm_start);
             u_full_traj_ol(:,:,:,t) = u_full_traj_ol(:,:,:,t);
             u_ol(:,:,:,t,test) = u_full_traj_ol(1:n_u,:,:,t);
@@ -126,7 +134,15 @@ while test<N_tests + 1
         %% Solve closed-loop MPC problem 
         if isInfHorStable_cl && run_cl
             
-            [~, ~, u_full_traj_cl(:,:,:,t)] = solveImplFinHorCL(game, T, x_cl(:,:,t,test));
+            if use_cl_surrogate
+                [VI.J, VI.F, VI.A_sh, VI.b_sh, VI.A_loc, VI.b_loc, VI.n_x, VI.N]...
+                                = game.VI_gen_surrogate_CL(x_cl(:,:,t,test));
+                dual_warm_start = dual_cl;
+                [u_full_traj_cl(:,:,:,t), dual_cl, res, solved(t)] = solveVICentrFB(VI, 10^6, eps, ...
+                    0.2, 0.2, u_cl_warm_start, dual_warm_start);
+            else
+                [~, ~, u_full_traj_cl(:,:,:,t)] = solveImplFinHorCL(game, T, x_cl(:,:,t,test));
+            end
             u_full_traj_cl(:,:,:,t) = u_full_traj_cl(:,:,:,t);
             u_cl(:,:,:,t,test) = u_full_traj_cl(1:n_u,:,:,t);
             x_cl(:,:,t+1,test) = evolveState(x_cl(:,:,t,test), game.A, game.B, u_cl(:, :,:, t,test), 1, n_u);

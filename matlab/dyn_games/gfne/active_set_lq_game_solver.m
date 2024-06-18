@@ -47,7 +47,7 @@ function [x,u,lam,mu,gam,psi,working_set,solve_iters,K] = active_set_lq_game_sol
                     vec = [1;x{t}];
                 end
                 for j = 1:size(G{t,i},1)
-                    if G{t,i}(j,:)*vec < -1e-8 && feasible
+                    if G{t,i}(j,:)*vec < -1e-7 && feasible
                         feasible = false;
                         H_active{t,i} = [H_active{t,i}; G{t,i}(j,:)];  
                         working_set{t,i}(j) = size(H_active{t,i},1);
@@ -95,7 +95,7 @@ function [x,u,lam,mu,gam,psi,working_set,solve_iters,K] = active_set_lq_game_sol
         end
     end
     iters = 0;
-    % disp('Feasible found');
+    disp('Feasible found');
     while true
         if open_loop
             [K,k] = solve_ec_lq_game_r(F,H_active,Q,N,m,T);

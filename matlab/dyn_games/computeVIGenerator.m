@@ -164,9 +164,9 @@ function [J,F, A_sh, b_sh, A_loc, b_loc, n_x, N] = genVIFromInitialState( ...
              reshape(A_sh, [size(A_sh,1), size(A_sh,2) * size(A_sh, 3)])];
     b_all = [b_all; sum(b_sh, 3)];
     options = optimoptions('quadprog','Display','off');
-    [~,~,exit_flag] = quadprog(zeros(n_x*N), zeros(n_x*N,1), A_all, b_all, [],[],[],[],[],options);
+    [~,~,exit_flag] = quadprog(eye(n_x*N), zeros(n_x*N,1), A_all, b_all, [],[],[],[],[],options);
     if exit_flag~=1
-        warning("The VI is infeasible")
+        error("[ol-NE] The VI is infeasible")
     end
 
 end
