@@ -45,6 +45,7 @@ Qb(1+n+3:1+n+4,1+n+3:1+n+4) = eye(2);
 % PB is selfish but has to avoid
 
 Ga = zeros(0,1+n);
+% Gb = [-4 0 1 0 0 0 -1 0 0];
 Gb = [-4 0 1 0 0 0 -1 0 0];
 
 for t = 1:T

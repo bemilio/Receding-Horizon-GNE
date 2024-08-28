@@ -1,4 +1,4 @@
-from games.staticgames import LinearQuadratic
+from games.staticgames import LinearQuadratic, GenericVI
 from algorithms.GNE_centralized import pFB_algorithm, FBF_algorithm
 import logging
 import numpy as np
@@ -13,7 +13,8 @@ if __name__ == '__main__':
     # parameters
     N_iter = 10000
 
-    game = LinearQuadratic(None, None, None, None, None, None, None, None, test=True)
+    # game = LinearQuadratic(None, None, None, None, None, None, None, None, test=True)
+    game = GenericVI(None, None, None, None, None, None, None, None, test=True)
     x_0 = np.zeros((2,1,1))
     x_0[0,0,0] = 2
     x_0[1,0,0] = 5

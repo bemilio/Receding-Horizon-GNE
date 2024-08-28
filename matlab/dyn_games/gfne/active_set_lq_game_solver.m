@@ -22,12 +22,12 @@ function [x,u,lam,mu,gam,psi,working_set,solve_iters,K] = active_set_lq_game_sol
 %         end
         [x,u,lam,mu,psi] = solve_ec_lq_game_d(F,H_active,Q,N,T,K,x0);
     else
-        disp('Active indices');
+        %disp('Active indices');
         for t= 1:T+1
             for i = 1:N
                 for j = 1:size(working_set{t,i})
                     if working_set{t,i}(j) > 0
-                        active = [t,i,j]
+                        active = [t,i,j];
                     end
                 end
             end
@@ -47,7 +47,7 @@ function [x,u,lam,mu,gam,psi,working_set,solve_iters,K] = active_set_lq_game_sol
                     vec = [1;x{t}];
                 end
                 for j = 1:size(G{t,i},1)
-                    if G{t,i}(j,:)*vec < -1e-8 && feasible
+                    if G{t,i}(j,:)*vec < -1e-7 && feasible
                         feasible = false;
                         H_active{t,i} = [H_active{t,i}; G{t,i}(j,:)];  
                         working_set{t,i}(j) = size(H_active{t,i},1);
@@ -68,12 +68,12 @@ function [x,u,lam,mu,gam,psi,working_set,solve_iters,K] = active_set_lq_game_sol
 %                 end
                 [x,u,lam,mu,psi] = solve_ec_lq_game_d(F,H_active,Q,N,T,K,x0);
             else
-                disp('Active indices');
+                % disp('Active indices');
                 for t= 1:T+1
                     for i = 1:N
                         for j = 1:size(working_set{t,i})
                             if working_set{t,i}(j) > 0
-                                active = [t,i,j]
+                                active = [t,i,j];
                             end
                         end
                     end
@@ -107,12 +107,12 @@ function [x,u,lam,mu,gam,psi,working_set,solve_iters,K] = active_set_lq_game_sol
 %             end
             [xn,un,lam,mu,psi] = solve_ec_lq_game_d(F,H_active,Q,N,T,K,x0);
         else
-            disp('Active indices');
+            %disp('Active indices');
             for t= 1:T+1
                 for i = 1:N
                     for j = 1:size(working_set{t,i})
                         if working_set{t,i}(j) > 0
-                            active = [t,i,j]
+                            active = [t,i,j];
                         end
                     end
                 end
@@ -287,7 +287,7 @@ function [x,u,lam,mu,gam,psi,working_set,solve_iters,K] = active_set_lq_game_sol
                 end
             end
             if cycle
-                disp('Cycle detected!');
+                % disp('Cycle detected!');
                 break;
             end
         end
