@@ -9,17 +9,20 @@ Dependencies:
 
 Minimal example script:
 
-`matlab/examples/basic_game`
+```
+matlab/examples/basic_game
+```
 
 The simulation results of the article can be reproduced by running the following scripts:
 
-`matlab/examples/4_zones_power_systems/main_4_zones_power_system.m
-matlab/examples/4_zones_power_systems/plot_4_zones_power_system.m
-`
+```
+matlab/examples/4_zones_power_systems/main_4_zones_power_system.m
+```
 
 
-`matlab/examples/vehicle_platooning/main_vehicle_platooning.m
-matlab/examples/vehicle_platooning/plot_vehicle_platooning.m`
+```
+matlab/examples/vehicle_platooning/main_vehicle_platooning.m
+```
 
 The `python` code is currently under development and it should be considered as untested.
 
