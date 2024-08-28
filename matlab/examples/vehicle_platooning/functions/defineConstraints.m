@@ -11,7 +11,7 @@ function [C_x, d_x, ...
     % series.
     % v(i) < v_max(i) Becomes sum_{j=1}^i -e_v(i) <= v_max(i) = v_des(1)
     % where e_v(i) is the state associated to the speed error for ag. i
-    % p(i-1) - p(i) > d_min becomes 
+    % p(i-1) - p(i) > d_min  becomes 
     % -e_p(i) - h * sum_{j=1}^i e_v(i) < - d_min(i) + d_des(i) + h*v_des(1)
     C_x = zeros(3*N, n_x); % For each agent: max-min speed, safety distance (not for agent 1, replaced by dummy constraint)
     d_x = zeros(3*N, 1);
@@ -23,9 +23,10 @@ function [C_x, d_x, ...
         d_x(3*(i-1)+1:3*(i-1)+2,:) = [p.max_speed(i) - p.v_des_1;
                                       p.v_des_1 - p.min_speed(i)];
         if i~=1
-            C_x(3*(i-1)+3,:) = p.headway_time(i) * kron(sel_vector_speed, [0, -1]) + ... 
-                               kron(sel_vector_position, [-1, 0]);
-            d_x(3*(i-1)+3,:) = -p.d_min(i) + p.d_des(i) + p.headway_time(i) * p.v_des_1;
+            % C_x(3*(i-1)+3,:) = p.headway_time(i) * kron(sel_vector_speed, [0, -1]) + ... 
+            %                    kron(sel_vector_position, [-1, 0]);
+            C_x(3*(i-1)+3,:) = kron(sel_vector_position, [-1, 0]);
+            d_x(3*(i-1)+3,:) = -p.d_min(i) + p.d_des(i); % + p.headway_time(i) * p.v_des_1;
         else
             % dummy constraint, it makes indexing easier than excluding it
             C_x(3*(i-1)+3,:) = zeros(1,n_x);  % included just for readability

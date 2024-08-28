@@ -19,7 +19,7 @@ end
 % T_i = col(A_cl_not_i^(tau-1) * A), with tau =1,...,T_hor 
 T=cell(N,1);
 for i=1:N
-    T{i}=zeros(nx*(T_hor),nx);
+    T{i}=zeros(nx*T_hor,nx);
     A_cl_not_i_power = eye(nx);
     for k=1:T_hor
         indexes = (k-1)*nx+1:k*nx;
@@ -32,11 +32,7 @@ end
 S=cell(N,1);
 for idx_agent=1:N
     S{idx_agent} = zeros(nx*T_hor,nu*T_hor, N);
-    A_cl_not_i_diag_stack = [];
-    for t=1:T_hor
-        % COmpute here, use later
-        A_cl_not_i_diag_stack = blkdiag(A_cl_not_i_diag_stack, A_cl_not_i(:,:,idx_agent));
-    end
+
     % Dependence of prediction of agent idx_agent on the input of agent
     % idx_agent itself
     % [ B_i                  0                    0 0 ... 0 ;
@@ -47,7 +43,7 @@ for idx_agent=1:N
         indexes_x = (k-1)*nx+1:k*nx;
         for tau=1:k
             indexes_u = (tau-1)*nu+1:tau*nu;
-            S{idx_agent}(indexes_x,indexes_u, idx_agent)=A_cl_not_i(:,:,idx_agent)^(k-i)*B(:,:,idx_agent);
+            S{idx_agent}(indexes_x,indexes_u, idx_agent)=(A_cl_not_i(:,:,idx_agent)^(k-tau))*B(:,:,idx_agent);
         end
     end
     % Dependence of prediction of agent idx_agent on the input of remaining

@@ -34,7 +34,7 @@ for i=1:N
         yline(desired_position, 'Color', selectedColor, 'LineStyle', ':', 'LineWidth', 2,'HandleVisibility', 'off');
         % Plot the safety distance
         % Define the lower boundary for the shaded area
-        p_ol_lower = p_ol(:,i) - 20 - v_ol(:,i) * param.headway_time(i);
+        p_ol_lower = p_ol(:,i) - param.d_min(i) - v_ol(:,i) * param.headway_time(i);
         % Define the x and y coordinates for the shaded area
         x_fill = [x, fliplr(x)];
         y_fill = [p_ol(:,i)',fliplr(p_ol_lower')];
@@ -74,7 +74,7 @@ end
 yline(param.max_acc(i), 'Color', [1 0.1 0.1], 'LineStyle', '--', 'LineWidth', 2,'HandleVisibility', 'off');
 yline(param.min_acc(i), 'Color', [1 0.1 0.1], 'LineStyle', '--', 'LineWidth', 2,'HandleVisibility', 'off');
 xlabel('$t$', 'Interpreter','latex');
-ylabel('$u_i$ (m/s)', 'Interpreter','latex');
+ylabel('$u_i$ ($\mathrm{m/s}$)', 'Interpreter','latex');
 grid on
 
 % Link the x-axes
@@ -105,7 +105,7 @@ if run_cl
             yline(desired_position, 'Color', selectedColor, 'LineStyle', ':', 'LineWidth', 2,'HandleVisibility', 'off');
             % Plot the safety distance
             % Define the lower boundary for the shaded area
-            p_cl_lower = p_cl(:,i) - 20 - v_cl(:,i) * param.headway_time(i);
+            p_cl_lower = p_cl(:,i) - param.d_min(i)  - v_cl(:,i) * param.headway_time(i);
             % Define the x and y coordinates for the shaded area
             x_fill = [x, fliplr(x)];
             y_fill = [p_cl(:,i)',fliplr(p_cl_lower')];
@@ -154,7 +154,7 @@ if run_cl
     yline(param.max_acc(i), 'Color', [1 0.1 0.1], 'LineStyle', '--', 'LineWidth', 2,'HandleVisibility', 'off');
     yline(param.min_acc(i), 'Color', [1 0.1 0.1], 'LineStyle', '--', 'LineWidth', 2,'HandleVisibility', 'off');
     xlabel('$t$', 'Interpreter','latex');
-    ylabel('$u_i$ (m/s)', 'Interpreter','latex');
+    ylabel('$u_i$ ($\mathrm{m/s}^2$)', 'Interpreter','latex');
     grid on
 
 

@@ -143,7 +143,6 @@ while test<N_tests + 1
             else
                 [~, ~, u_full_traj_cl(:,:,:,t)] = solveImplFinHorCL(game, T, x_cl(:,:,t,test));
             end
-            u_full_traj_cl(:,:,:,t) = u_full_traj_cl(:,:,:,t);
             u_cl(:,:,:,t,test) = u_full_traj_cl(1:n_u,:,:,t);
             x_cl(:,:,t+1,test) = evolveState(x_cl(:,:,t,test), game.A, game.B, u_cl(:, :,:, t,test), 1, n_u);
             % Retrieve last state, used for computing the shifted trajectory
@@ -162,14 +161,12 @@ while test<N_tests + 1
         end
     end 
     err_shift(test) = 0;
-    % if is_test_valid_ol(test)
-        for t=t_OL_assumpt_satisfied(test):T_sim-1
-            for i=1:N
-                err_shift(test) = max(err_shift(test), norm(u_shift_ol(:,:,i,t) - u_full_traj_ol(:,:,i, t+1)));
-            end
+    for t=t_OL_assumpt_satisfied(test):T_sim-1
+        for i=1:N
+            err_shift(test) = max(err_shift(test), norm(u_shift_ol(:,:,i,t) - u_full_traj_ol(:,:,i, t+1)));
         end
-        disp("err test = " + num2str(err_shift(test)))
-    % end
+    end
+    disp("err test = " + num2str(err_shift(test)))
     test = test+1;
 end
 
