@@ -20,3 +20,4 @@ matlab/dyn_games/f_NE_consistency_result.mat
 diary
 *.fig
 *.zip
+*.backup
