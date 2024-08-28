@@ -154,7 +154,7 @@ end
 %     unstable_bl(test) = max(max(x_bl(:,:,:,test))) > 10;
 % end
 save("workspace_variables.mat", "x_ol", "x_cl", "x_bl", "u_ol", "u_cl", "u_bl", "X_f_cl", "norms_x_0_to_test")
-plot_power_sys
+plot_4_zones_power_system
 
 % save("f_NE_implicit_consistency_result", "u_shifted", "u", "u_full_trajectory");
 disp( "Job complete" )
