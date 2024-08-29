@@ -1,6 +1,6 @@
 ## Receding-horizon solution of dynamic games
 
-This repository contains the code associated to the article [Linear-Quadratic Dynamic Games as Receding-Horizon Variational
+This repository contains the code associated with the article [Linear-Quadratic Dynamic Games as Receding-Horizon Variational
 Inequalities](https://arxiv.org/submit/5818661). The code contains utilities for the computation of Open-Loop Nash equilibria and Closed-Loop Nash equilibria, both in the infinite-horizon unconstrained case and the finite-horizon, constrained case. 
 
 Dependencies:
