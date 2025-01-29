@@ -6,7 +6,7 @@ game.n_x = n_x;
 game.n_u = n_u;
 game.N = N;
 
-game.A = [1, 1; 0, 1];
+game.A = [.9, 1; 0, .9];
 
 game.B = zeros(2, 1, 2);
 game.B(:,:,1) = [1;0];

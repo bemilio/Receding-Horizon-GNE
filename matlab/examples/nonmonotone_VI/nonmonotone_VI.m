@@ -1,5 +1,5 @@
 % This script defines an OL-NE whose finite-horizon problem is a 
-% non-monotone VI for an horizon T>3
+% non-monotone VI for an horizon T>4
 
 
 clear all
@@ -15,7 +15,7 @@ rng(seed);
 n_x = 2; 
 n_u = 1;
 N = 2;
-T = 3;
+T = 5;
 
 game = defineGame();
 
@@ -26,7 +26,7 @@ game = defineGame();
 x_0=[1; 0];
 
 %% Test monotonicity of OL-NE
-[game.P_ol, game.K_cl, isInfHorStable_cl] = solveInfHorCL(game, 10000, 10^(-6));
+[game.P_ol, game.K_cl, isInfHorStable_cl] = solveInfHorOL(game, 10000, 10^(-6));
 VIgen = computeVIGenerator(game,T);
 % F(x_0) = M*u + g 
 [~, ~, ~, ~, ~, ~, ~, M, g] = VIgen(x_0);
