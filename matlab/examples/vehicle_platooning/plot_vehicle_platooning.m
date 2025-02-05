@@ -20,7 +20,7 @@ end
 
 % Plot the sequence
 figure; 
-ax1 = subplot(2,1,1); % 2 rows, 1 column, second subplot
+ax1 = subplot(3,1,1); % 3 rows, 1 column, first subplot
 hold on
 colors = lines(N);
 x = linspace(0, (T_sim - 1) * param.T_sampl, T_sim);
@@ -41,7 +41,6 @@ for i=1:N
         fill(x_fill, y_fill, colors(i,:), 'FaceAlpha', 0.2, 'EdgeColor', 'none','HandleVisibility', 'off');
     end
 end 
-%TODO: plot closed loop
 hold on
 if run_cl
     plot(p_cl, '-','DisplayName', "CL-NE");
@@ -51,7 +50,9 @@ grid on;
 set(gca, 'XTickLabel', []); % Remove x-tick labels from the top subplot
 legend
 
-ax2 = subplot(2,1,2); % 2 rows, 1 column, second subplot
+
+%% plot velocity over time
+ax2 = subplot(3,1,2); % 3 rows, 1 column, second subplot
 hold on
 indexes_position = 1:n_x_per_agent:n_x;
 indexes_speed = 2:n_x_per_agent:n_x;
@@ -74,6 +75,14 @@ pos2 = get(ax2, 'Position');
 gap = 0.05; % Small gap between the plots
 pos1(2) = pos2(2) + pos2(4) + gap;
 set(ax1, 'Position', pos1);
+
+%% Plot distance from region of attraction
+ax3 = subplot(3,1,3); % 3 rows, 1 column, third subplot
+plot(distance_state_reg_attraction, 'LineWidth',1.5, 'Color', "k");
+grid on
+ylabel('dist(𝑥(𝑇), 𝕏ᵒˡ)');
+xlabel('$t$', 'Interpreter','latex');
+
 
 print('pos_velocity.png', '-dpng', '-r600');  % Save with 600 dpi resolution
 

@@ -56,6 +56,8 @@ game = defineVehiclePlatooningGame(N, param);
 
 X_f_ol = computeTerminalSetOL(game);
 
+distance_state_reg_attraction = zeros(T_sim, N_tests);
+
 x_cl = zeros(n_x, 1, T_sim + 1, N_tests);
 x_ol = zeros(n_x, 1, T_sim + 1, N_tests);
 x_bl = zeros(n_x, 1, T_sim + 1, N_tests);
@@ -118,6 +120,7 @@ while test<N_tests + 1
                 %                     & all(sum(pagemtimes(game.C_u_mix, inf_hor_ol_input), 3) + game.C_x_mix * x_ol_T <= game.d_mix-eps) ...
                 %                     & all( game.C_x * x_ol_T <= game.d_x-eps);
             % end
+            distance_state_reg_attraction(t, test) = norm(x_ol_T - X_f_ol.project(x_ol_T));
             if checkTerminalConditionOL(x_ol_T, X_f_ol) && t_OL_assumpt_satisfied(test) == 0
                 t_OL_assumpt_satisfied(test) = t;
             end
