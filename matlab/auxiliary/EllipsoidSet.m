@@ -2,7 +2,7 @@ classdef EllipsoidSet
     %ELLIPSOIDSET x'Px <= d
     
     properties
-        P, d, n_x, P_half
+        P, d, n_x, P_sqrt, d_sqrt
     end
     
     methods
@@ -15,8 +15,9 @@ classdef EllipsoidSet
                 error("[EllipsoidSet] Matrix must be pos. definite");
             end
             obj.P = P;
-            obj.P_half = sqrtm(P);
+            obj.P_sqrt = sqrtm(P);
             obj.d = d;
+            obj.d_sqrt = sqrt(d);
             obj.n_x = size(P,1);
         end
         
@@ -29,9 +30,9 @@ classdef EllipsoidSet
             d_epigr = [1; zeros(self.n_x,1)];
             constr(1) = secondordercone(A_epigr, x, d_epigr, 0);
             % x'Px <= d
-            A_ellips = [zeros(self.n_x,1), self.P_half];
+            A_ellips = [zeros(self.n_x,1), self.P_sqrt];
             d_ellips = zeros(self.n_x+1,1);
-            constr(2) = secondordercone(A_ellips, zeros(self.n_x,1), d_ellips, -self.d );
+            constr(2) = secondordercone(A_ellips, zeros(self.n_x,1), d_ellips, -self.d_sqrt );
 
             cost = [1; zeros(self.n_x,1)];
             y_with_aux = coneprog(cost, constr);
