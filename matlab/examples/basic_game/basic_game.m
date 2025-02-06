@@ -31,7 +31,7 @@ game = defineBasicGame();
 [game.P_cl, game.K_cl, isInfHorStable_cl] = solveInfHorCL(game, 10000, 10^(-6));
 [game.P_ol, game.K_ol, isInfHorStable_ol] = solveInfHorOL(game, 1000, 10^(-6));
 
-[game.C_x, game.d_x, game.C_u_loc, game.d_u_loc] = defineConstraints(N, n_x, n_u);
+[game.C_x, game.d_x, game.C_u_loc, game.d_u_loc, game.C_x_mix, game.C_u_mix, game.d_mix] = defineConstraints(N, n_x, n_u);
 
 [game.C_u_sh, game.d_u_sh] = defineDummySharedInputConstraints(n_u, N);
     
@@ -73,7 +73,7 @@ for test = 1:N_tests
         end
         %% Solve open-loop MPC problem
         if isInfHorStable_ol
-            [VI.J, VI.F, VI.A_sh, VI.b_sh, VI.A_loc, VI.b_loc, VI.n_x, VI.N]...
+            [VI.F, VI.A_sh, VI.b_sh, VI.A_loc, VI.b_loc, VI.n_x, VI.N]...
                 = game.VI_generator(x_ol(:,t));
             dual_warm_start = dual;
             [u_full_traj_ol(:,:,:,t), dual, res, solved(t)] = solveVICentrFB(VI, 10^5, 10^(-4), ...

@@ -1,6 +1,3 @@
-%  4-zones power system distributed control based on Venkat, Hiskens,
-%  Rawlings, Wright 2008
-
 clear all
 clc
 close all
@@ -22,7 +19,6 @@ N = 5;
 n_x = 2 * N; 
 n_u = 1; % acceleration
 T = 10;
-T_sampl = 1;
 T_sim = 200;
 
 N_tests = 1;
@@ -55,6 +51,8 @@ game = defineVehiclePlatooningGame(N, param);
     game.C_u_mix, game.C_x_mix, game.d_mix] = defineConstraints(N, param);
 
 X_f_ol = computeTerminalSetOL(game);
+
+distance_state_reg_attraction = zeros(T_sim, N_tests);
 
 x_cl = zeros(n_x, 1, T_sim + 1, N_tests);
 x_ol = zeros(n_x, 1, T_sim + 1, N_tests);
@@ -98,7 +96,7 @@ while test<N_tests + 1
 
         %% Solve open-loop MPC problem
         if isInfHorStable_ol
-            [VI.J, VI.F, VI.A_sh, VI.b_sh, VI.A_loc, VI.b_loc, VI.n_x, VI.N]...
+            [VI.F, VI.A_sh, VI.b_sh, VI.A_loc, VI.b_loc, VI.n_x, VI.N]...
                 = game.VI_generator(x_ol(:,:,t,test));
             dual_warm_start = dual;
             [u_full_traj_ol(:,:,:,t), dual, res, solved(t)] = solveVICentrFB(VI, 10^6, eps, ...
@@ -118,6 +116,7 @@ while test<N_tests + 1
                 %                     & all(sum(pagemtimes(game.C_u_mix, inf_hor_ol_input), 3) + game.C_x_mix * x_ol_T <= game.d_mix-eps) ...
                 %                     & all( game.C_x * x_ol_T <= game.d_x-eps);
             % end
+            distance_state_reg_attraction(t, test) = norm(x_ol_T - X_f_ol.project(x_ol_T));
             if checkTerminalConditionOL(x_ol_T, X_f_ol) && t_OL_assumpt_satisfied(test) == 0
                 t_OL_assumpt_satisfied(test) = t;
             end
@@ -157,7 +156,7 @@ while test<N_tests + 1
     test = test+1;
 end
 
-save("workspace_variables.mat", "x_ol", "x_cl", "x_bl", "u_ol", "u_cl", "u_bl")
+save("workspace_variables.mat", "x_ol", "x_cl", "x_bl", "u_ol", "u_cl", "u_bl", "distance_state_reg_attraction")
 plot_vehicle_platooning
 
 disp( "Job complete" )

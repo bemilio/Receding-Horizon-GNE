@@ -20,7 +20,7 @@ end
 
 % Plot the sequence
 figure; 
-ax1 = subplot(2,1,1); % 2 rows, 1 column, second subplot
+ax1 = subplot(3,1,1); % 3 rows, 1 column, first subplot
 hold on
 colors = lines(N);
 x = linspace(0, (T_sim - 1) * param.T_sampl, T_sim);
@@ -41,7 +41,6 @@ for i=1:N
         fill(x_fill, y_fill, colors(i,:), 'FaceAlpha', 0.2, 'EdgeColor', 'none','HandleVisibility', 'off');
     end
 end 
-%TODO: plot closed loop
 hold on
 if run_cl
     plot(p_cl, '-','DisplayName', "CL-NE");
@@ -51,7 +50,12 @@ grid on;
 set(gca, 'XTickLabel', []); % Remove x-tick labels from the top subplot
 legend
 
-ax2 = subplot(2,1,2); % 2 rows, 1 column, second subplot
+% Add label (a)
+text(1.02, 0.5, '(a)', 'Units', 'normalized', 'FontSize', 12, 'Interpreter', 'latex');
+
+
+%% plot velocity over time
+ax2 = subplot(3,1,2); % 3 rows, 1 column, second subplot
 hold on
 indexes_position = 1:n_x_per_agent:n_x;
 indexes_speed = 2:n_x_per_agent:n_x;
@@ -65,15 +69,41 @@ yline(param.v_des_1, 'Color', colors(1, :), 'LineStyle', ':', 'LineWidth', 2,'Ha
 xlabel('$t$', 'Interpreter','latex');
 ylabel('$v_i$ (m/s)', 'Interpreter','latex');
 grid on
+% Add label (b)
+text(1.02, 0.5, '(b)', 'Units', 'normalized', 'FontSize', 12, 'Interpreter', 'latex');
 
+%% Plot distance from region of attraction
+ax3 = subplot(3,1,3); % 3 rows, 1 column, third subplot
+plot(x, distance_state_reg_attraction, 'LineWidth',1.5, 'Color', "k");
+grid on
+ylabel('dist(𝑥(𝑇), 𝕏ᵒˡ)');
+xlabel('$t$', 'Interpreter','latex');
+% Add label (c)
+text(1.02, 0.5, '(c)', 'Units', 'normalized', 'FontSize', 12, 'Interpreter', 'latex');
+
+
+%% Adjust subplots
 % Link the x-axes
-linkaxes([ax1, ax2], 'x');
+linkaxes([ax1, ax2, ax3], 'x');
+
 % Remove the gap between the plots
-pos1 = get(ax1, 'Position');
-pos2 = get(ax2, 'Position');
 gap = 0.05; % Small gap between the plots
-pos1(2) = pos2(2) + pos2(4) + gap;
+
+% Adjust positions
+pos2 = get(ax2, 'Position');
+pos3 = get(ax3, 'Position');
+
+pos2(2) = pos3(2) + pos3(4) + gap; % Move ax2 above ax3
+set(ax2, 'Position', pos2);
+
+pos1 = get(ax1, 'Position');
+pos1(2) = pos2(2) + pos2(4) + gap; % Move ax1 above ax2
 set(ax1, 'Position', pos1);
 
-print('pos_velocity.png', '-dpng', '-r600');  % Save with 600 dpi resolution
+
+
+print('pos_velocity_dist_to_Xf.png', '-dpng', '-r600');  % Save with 600 dpi resolution
+
+
+
 
