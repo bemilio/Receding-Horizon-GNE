@@ -25,8 +25,8 @@ T = 10;
 T_sampl = 1;
 T_sim = 200;
 
-variance_to_test = [.01, .1, 1];
-N_tests = 20 * length(variance_to_test) + 1  ;
+variance_to_test = [.01, .05, .1];
+N_tests = 100 * length(variance_to_test) + 1  ;
 
 u_full_trajectory = zeros(n_u*T, N, T_sim, N_tests);
 u_shifted = zeros(n_u*T, N, T_sim, N_tests);
@@ -74,6 +74,12 @@ x_0_v = (param.max_speed - param.min_speed)/2 + param.min_speed...
 
 x_0 = convertPosVelToState(x_0_p, x_0_v, param.v_des_1, param.d_des, param.headway_time);
 
+
+% Create flags that say if the test has lead to divergence
+has_diverged = false(N_tests,1);
+has_converged = false(N_tests,1);
+
+
 test = 1;
 %% Run tests
 while test<N_tests + 1
@@ -84,8 +90,8 @@ while test<N_tests + 1
         test_variance(test) = variance_to_test(1+mod(test-2, length(variance_to_test)));
     end
     % apply noise to terminal cost
-    game.P_cl = P_cl_no_noise + test_variance(test) * randn(size(P_cl_no_noise));
-    game.P_ol = P_ol_no_noise + test_variance(test) * randn(size(P_cl_no_noise));
+    max_value_Pol = max(max(max(abs(P_ol_no_noise))));
+    game.P_ol = P_ol_no_noise + test_variance(test) * max_value_Pol * randn(size(P_ol_no_noise));
 
     disp( "Test " + num2str(test) )
     % x_0 = 10*randn(n_x,1);
@@ -111,14 +117,19 @@ while test<N_tests + 1
 
         %% Solve open-loop MPC problem
         if isInfHorStable_ol
-            [VI.J, VI.F, VI.A_sh, VI.b_sh, VI.A_loc, VI.b_loc, VI.n_x, VI.N]...
+            if  norm(x_ol(:,:,t,test)) > 10 * norm(x_0)
+                % Assume it diverged
+                has_diverged(test) = true;
+                break
+            end
+            [VI.F, VI.A_sh, VI.b_sh, VI.A_loc, VI.b_loc, VI.n_x, VI.N]...
                 = game.VI_generator(x_ol(:,:,t,test));
             dual_warm_start = dual;
             [u_full_traj_ol(:,:,:,t), dual, res, solved(t)] = solveVICentrFB(VI, 10^6, eps, ...
                 0.2, 0.2, u_ol_warm_start, dual_warm_start);
             u_full_traj_ol(:,:,:,t) = u_full_traj_ol(:,:,:,t);
             u_ol(:,:,:,t,test) = u_full_traj_ol(1:n_u,:,:,t);
-            x_ol(:,:,t+1,test) = evolveState(x_ol(:,:,t,test), game.A, game.B, u_ol(:, :,:, t), 1, n_u);
+            x_ol(:,:,t+1,test) = evolveState(x_ol(:,:,t,test), game.A, game.B, u_ol(:, :,:, t, test), 1, n_u);
             x_ol_T = evolveState(x_ol(:,:,t,test), game.A, game.B, u_full_traj_ol(:,:,:,t), T, n_u);
             inf_hor_ol_input = pagemtimes(game.K_ol,x_ol_T);
             for i=1:N
@@ -167,6 +178,10 @@ while test<N_tests + 1
         end
         disp("err test = " + num2str(err_shift(test)))
     % end
+    % Check convergence
+    if norm(x_ol(:,1,end,test)) < norm(x_0)/100
+        has_converged(test) = true;
+    end
     test = test+1;
 end
 
