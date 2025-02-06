@@ -1,6 +1,3 @@
-%  4-zones power system distributed control based on Venkat, Hiskens,
-%  Rawlings, Wright 2008
-
 clear all
 clc
 close all
@@ -22,7 +19,6 @@ N = 5;
 n_x = 2 * N; 
 n_u = 1; % acceleration
 T = 10;
-T_sampl = 1;
 T_sim = 200;
 
 N_tests = 1;
@@ -160,7 +156,7 @@ while test<N_tests + 1
     test = test+1;
 end
 
-save("workspace_variables.mat", "x_ol", "x_cl", "x_bl", "u_ol", "u_cl", "u_bl")
+save("workspace_variables.mat", "x_ol", "x_cl", "x_bl", "u_ol", "u_cl", "u_bl", "distance_state_reg_attraction")
 plot_vehicle_platooning
 
 disp( "Job complete" )

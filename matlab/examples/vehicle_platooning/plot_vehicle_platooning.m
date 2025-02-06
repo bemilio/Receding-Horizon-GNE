@@ -50,6 +50,9 @@ grid on;
 set(gca, 'XTickLabel', []); % Remove x-tick labels from the top subplot
 legend
 
+% Add label (a)
+text(1.02, 0.5, '(a)', 'Units', 'normalized', 'FontSize', 12, 'Interpreter', 'latex');
+
 
 %% plot velocity over time
 ax2 = subplot(3,1,2); % 3 rows, 1 column, second subplot
@@ -66,23 +69,41 @@ yline(param.v_des_1, 'Color', colors(1, :), 'LineStyle', ':', 'LineWidth', 2,'Ha
 xlabel('$t$', 'Interpreter','latex');
 ylabel('$v_i$ (m/s)', 'Interpreter','latex');
 grid on
-
-% Link the x-axes
-linkaxes([ax1, ax2], 'x');
-% Remove the gap between the plots
-pos1 = get(ax1, 'Position');
-pos2 = get(ax2, 'Position');
-gap = 0.05; % Small gap between the plots
-pos1(2) = pos2(2) + pos2(4) + gap;
-set(ax1, 'Position', pos1);
+% Add label (b)
+text(1.02, 0.5, '(b)', 'Units', 'normalized', 'FontSize', 12, 'Interpreter', 'latex');
 
 %% Plot distance from region of attraction
 ax3 = subplot(3,1,3); % 3 rows, 1 column, third subplot
-plot(distance_state_reg_attraction, 'LineWidth',1.5, 'Color', "k");
+plot(x, distance_state_reg_attraction, 'LineWidth',1.5, 'Color', "k");
 grid on
 ylabel('dist(𝑥(𝑇), 𝕏ᵒˡ)');
 xlabel('$t$', 'Interpreter','latex');
+% Add label (c)
+text(1.02, 0.5, '(c)', 'Units', 'normalized', 'FontSize', 12, 'Interpreter', 'latex');
 
 
-print('pos_velocity.png', '-dpng', '-r600');  % Save with 600 dpi resolution
+%% Adjust subplots
+% Link the x-axes
+linkaxes([ax1, ax2, ax3], 'x');
+
+% Remove the gap between the plots
+gap = 0.05; % Small gap between the plots
+
+% Adjust positions
+pos2 = get(ax2, 'Position');
+pos3 = get(ax3, 'Position');
+
+pos2(2) = pos3(2) + pos3(4) + gap; % Move ax2 above ax3
+set(ax2, 'Position', pos2);
+
+pos1 = get(ax1, 'Position');
+pos1(2) = pos2(2) + pos2(4) + gap; % Move ax1 above ax2
+set(ax1, 'Position', pos1);
+
+
+
+print('pos_velocity_dist_to_Xf.png', '-dpng', '-r600');  % Save with 600 dpi resolution
+
+
+
 
