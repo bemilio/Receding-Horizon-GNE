@@ -14,7 +14,7 @@ run_cl = false;
 
 seed = 1;
 rng(seed); 
-eps = 10^(-4);
+eps = 10^(-3);
 
 N = 5; 
 % state For each agent: position error, speed error. 
@@ -125,8 +125,9 @@ while test<N_tests + 1
             [VI.F, VI.A_sh, VI.b_sh, VI.A_loc, VI.b_loc, VI.n_x, VI.N]...
                 = game.VI_generator(x_ol(:,:,t,test));
             dual_warm_start = dual;
-            [u_full_traj_ol(:,:,:,t), dual, res, solved(t)] = solveVICentrFB(VI, 10^6, eps, ...
-                0.2, 0.2, u_ol_warm_start, dual_warm_start);
+            % To do: give a sensible value to p_step and d_step
+            [u_full_traj_ol(:,:,:,t), dual, res, solved(t)] = solveVICentrFB(VI, 10^5, eps, ...
+                0.05, 0.05, u_ol_warm_start, dual_warm_start);
             u_full_traj_ol(:,:,:,t) = u_full_traj_ol(:,:,:,t);
             u_ol(:,:,:,t,test) = u_full_traj_ol(1:n_u,:,:,t);
             x_ol(:,:,t+1,test) = evolveState(x_ol(:,:,t,test), game.A, game.B, u_ol(:, :,:, t, test), 1, n_u);

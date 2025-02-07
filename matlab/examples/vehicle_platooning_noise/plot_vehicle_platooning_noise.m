@@ -28,7 +28,7 @@ figure;
 % Get the number of variance values tested
 
 % Extract baseline values (test 1)
-baseline = x_ol(:,:,:,:,1); % Size: (n_x, 1, T_sim)
+baseline = x_ol(:,:,:,1); % Size: (n_x, 1, T_sim)
 
 % Compute the norm of the state sequence
 baseline_norm = norm(baseline(:)); 
@@ -37,7 +37,7 @@ baseline_norm = norm(baseline(:));
 norm_ratios = zeros(N_tests-1, 1);
 
 % Loop over tests (excluding test 1)
-for test_idx = 2:N_tests
+for test_idx = 2:100
     % Compute the difference from baseline
     diff = x_ol(:,:,:,test_idx) - baseline;
 
@@ -70,7 +70,9 @@ boxplot(grouped_data, variance_to_test*100, 'Labels', string(variance_to_test*10
 xlabel('$\mathrm{variance}/\mathrm{max}_i(\|P_i^{\mathrm{OL}}\|_\infty)$ (\%)', 'Interpreter','latex');
 ylabel('$\|x - \hat{x}\|/\|\hat{x}\|$ (\%)', 'Interpreter','latex');
 grid on;
-
+% Adjust figure size (wider x-axis, shorter y-axis)
+set(gcf, 'Position', [100, 100, 800, 300]); % [left, bottom, width, height]
+ylim([0 20]);
 print('box_plot_noise_P.png', '-dpng', '-r600');  % Save with 600 dpi resolution
 
 
