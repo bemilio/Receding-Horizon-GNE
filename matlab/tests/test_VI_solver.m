@@ -24,6 +24,9 @@ VI.A_sh = ones(1,n_x,2);
 VI.b_sh = zeros(1,1,2);
 VI.A_loc = zeros(2*n_x,n_x,2); % box
 VI.b_loc = ones(2*n_x,1,2);
+VI.Q = [Q(:,:,1); Q(:,:,2)];
+VI.q =  [0;0];
+
 
 VI.A_loc(:,:,1) = [eye(n_x); -eye(n_x)];
 VI.A_loc(:,:,2) = [eye(n_x); -eye(n_x)];
@@ -34,12 +37,39 @@ VI.b_loc(:,:,2) = [3; .2];
 VI.n_x = n_x;
 VI.N = N;
 
+disp("TESTING: Forward-backward centralized algotithm")
 for test = 1:N_tests
     disp( "TEST: " + num2str(test) )
     x_0 = rand(1,1,2); 
     n_sh_constraints = size(VI.A_sh,1);
     d_0 = zeros(n_sh_constraints, 1);
-    [x, d] = solveVICentrFB(VI, 10^3, 10^(-4), 0.1, 0.1, x_0, d_0);
+    % Test Forward Backward
+    [x, d] = solveVICentrFB(VI, 10^5, 10^(-5), 0.1, 0.1, x_0, d_0);
+    test_passed(test) = (x(:,:,1) + x(:,:,2) < 10^(-4) && x(:,:,1)>=0 && x(:,:,2)<=0 );
+    disp("Test " + num2str(test) + " complete!")
+    if(test_passed(test)) == false
+        disp("Test failed")
+    end
+
+%    workers_complete = workers_complete + 1;
+%    disp("Workers complete: " + num2str(workers_complete) + " of " + num2str(N_tests))
+end
+
+if all(test_passed)
+    disp("Forward-Backward: test passed")
+else
+    disp("Forward-Backward: Test NOT passed")
+end
+
+disp("TESTING: Douglas-Rachford centralized algotithm")
+test_passed =[];
+for test = 1:N_tests
+    disp( "TEST: " + num2str(test) )
+    x_0 = rand(1,1,2); 
+    n_sh_constraints = size(VI.A_sh,1);
+    d_0 = zeros(n_sh_constraints, 1);
+    % Test Forward Backward
+    [x, d] = solveVICentrDR(VI, 10^4, 10^(-5), 0.5, eye(VI.N * VI.n_x), x_0);
     test_passed(test) = (x(:,:,1) + x(:,:,2) < 10^(-4) && x(:,:,1)>=0 && x(:,:,2)<=0 );
     disp("Test " + num2str(test) + " complete!")
 %    workers_complete = workers_complete + 1;
@@ -47,11 +77,10 @@ for test = 1:N_tests
 end
 
 if all(test_passed)
-    disp("Test passed")
+    disp("Douglas-Rachford: test passed")
 else
-    disp("Test NOT passed")
+    disp("Douglas-Rachford: Test NOT passed")
 end
-
 
 % END script
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
