@@ -32,10 +32,9 @@ VIgen = computeVIGenerator(game,T);
 [~, ~, ~, ~, ~, ~, ~, M, g] = VIgen(x_0);
 
 if min(eig(M + M')) <= -eps
-    warning("The OL-NE VI is not monotone: the minimum eigenvalue is %.2d for the mapping matrix", min(eig(M + M')))
-    M
+    warning("The OL-NE VI is not monotone: the minimum eigenvalue is %.2d for the mapping matrix\n", min(eig(M + M')))
 else
-    fprintf("The OL-NE VI is monotone with min eigenvalue %.2d for the mapping matrix", min(eig(M + M')))
+    fprintf("The OL-NE VI is monotone with min eigenvalue %.2d for the mapping matrix\n", min(eig(M + M')))
 end
 
 disp( "Job complete" )
