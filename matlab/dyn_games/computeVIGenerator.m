@@ -139,10 +139,10 @@ function [F, A_sh, b_sh, A_loc, b_loc, n_x, N, Q_mat, g_mat] = genVIFromInitialS
         g_mat( (i-1) * n_u * T_hor + 1:i*n_u* T_hor, :) = g(:,:,i);
     end
     if min(eig(Q_mat + Q_mat')) <= -eps
-        warning("The OL-NE VI is not monotone: the minimum eigenvalue is %.2d for the mapping matrix", min(eig(Q_mat + Q_mat')))
+        warning("The OL-NE VI is not monotone: the minimum eigenvalue is %.2d for the mapping matrix \n", min(eig(Q_mat + Q_mat')))
         Q_mat
     else
-        fprintf("The OL-NE VI is monotone with min eigenvalue %.2d for the mapping matrix", min(eig(Q_mat + Q_mat')))
+        fprintf("The OL-NE VI is monotone with min eigenvalue %.2d for the mapping matrix \n", min(eig(Q_mat + Q_mat')))
     end
     
     n_sh_const_u = size(C_u_sh,1);

@@ -24,6 +24,9 @@ if ~exist('H', 'var')
     H = eye(VI.N * VI.n_x);
 end
 
+% initialize container for residual
+r = zeros(n_iter,1);
+
 % Collect constraints in a single matrix and vector
 n_loc_constr = size(VI.A_loc, 1);
 A_loc_all = zeros(VI.N * n_loc_constr, VI.N * VI.n_x);
@@ -51,35 +54,39 @@ M_2 = (Q + Q')/2;
 G_inv = eye(size(Q,1))/(H + M_1);
 solved = false;
 for k =1:n_iter
+    % Compute residual
+    r(k) = compute_residual(x,VI.F, A_all, b_all, eps_err);
+
     % Perform Douglas-Rachford step
-    x = run_DR_once(x, M_1, M_2, G_inv, VI.q, H, A_all, b_all, stepsize);
-    if mod(k,20)==0
-        % Compute and display residual
-        r = compute_residual(x,VI.F, A_all, b_all);
-        if mod(k,300)==0
-            disp("Residual: " + num2str(r));
-        end
-        if r < eps_err
-            solved = true;
-            break
-        end
+    x = run_DR_once(x, M_1, M_2, G_inv, VI.q, H, A_all, b_all, stepsize, eps_err);
+    
+    % Display residual
+    if mod(k,300)==0
+        disp("Residual: " + num2str(r(k)));
+    end
+    if r(k) < eps_err
+        solved = true;
+        break
     end
 end
 
 end
 
-function [x_new] = run_DR_once(x, M_1, M_2, G_inv, q,  H, A_all, b_all, stepsz)
+function [x_new] = run_DR_once(x, M_1, M_2, G_inv, q,  H, A_all, b_all, stepsz, eps_err)
     
     N = size(x, 3);
     n_x = size(x,1);
 
     % Define quadratic program for first step of the algorithm
-    options = optimoptions('quadprog','Display','off', 'Algorithm', 'active-set');
-    proj = @(y) quadprog(H + M_2, q + (M_1-H) * y, ...
-        A_all, b_all, [], [], [],[], y, options); 
-    
+    proj = osqp;
+    proj.setup(H + M_2, q + (M_1-H) * x(:), A_all, -Inf*ones(size(A_all,1),1), b_all, 'verbose', false, 'eps_abs', eps_err/1000,'eps_rel', eps_err/1000 )
+
+    % options = optimoptions('quadprog','Display','off', 'Algorithm', 'active-set');
+    % proj_2 = @(y) quadprog(H + M_2, q + (M_1-H) * y, ...
+    %     A_all, b_all, [], [], [],[], y, options); 
+
     % Actual algorithm
-    y_new = proj(x(:));
+    y_new = proj.solve.x;
     x_new = G_inv * (H * (2*stepsz*y_new + (1-2*stepsz) * x(:)) + M_1 * x(:));  
 
     % Reshape such that the 3rd dimension of the array indexes the agents
@@ -87,14 +94,21 @@ function [x_new] = run_DR_once(x, M_1, M_2, G_inv, q,  H, A_all, b_all, stepsz)
 
 end
 
-function r = compute_residual(x, F, A_all, b_all)
+function r = compute_residual(x, F, A_all, b_all, eps_err)
     n_x = size(x,1);
     N = size(x,3);
-    % Define projection operator to the constraint set
-    options = optimoptions('quadprog','Display','off', 'Algorithm', 'active-set');
-    proj = @(y) reshape( ...
-    quadprog(eye(N*n_x), -y(:), A_all, b_all, [], [], [],[], y(:), options), [n_x,1, N]); 
+    
+    % Forward step
+    y = x-F(x);
 
-    x_transf = proj(x-F(x));
+    % Define projection operator to the constraint set
+    proj = osqp;
+    proj.setup(eye(N*n_x), -y(:), A_all, -Inf*ones(size(A_all,1),1), b_all, 'verbose', false, 'eps_abs', eps_err/1000,'eps_rel', eps_err/1000 )
+
+    % options = optimoptions('quadprog','Display','off', 'Algorithm', 'active-set');
+    % proj = @(y) reshape( ...
+    % quadprog(eye(N*n_x), -y(:), A_all, b_all, [], [], [],[], y(:), options), [n_x,1, N]); 
+
+    x_transf = reshape(proj.solve.x, [n_x,1, N]);
     r = norm(reshape(x - x_transf, [],1));
 end
