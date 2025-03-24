@@ -22,3 +22,4 @@ diary
 *.zip
 *.backup
 matlab/examples/vehicle_platooning/install_osqp.m
+*.mp4

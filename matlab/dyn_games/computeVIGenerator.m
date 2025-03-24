@@ -140,7 +140,6 @@ function [F, A_sh, b_sh, A_loc, b_loc, n_x, N, Q_mat, g_mat] = genVIFromInitialS
     end
     if min(eig(Q_mat + Q_mat')) <= -eps
         warning("The OL-NE VI is not monotone: the minimum eigenvalue is %.2d for the mapping matrix \n", min(eig(Q_mat + Q_mat')))
-        Q_mat
     else
         fprintf("The OL-NE VI is monotone with min eigenvalue %.2d for the mapping matrix \n", min(eig(Q_mat + Q_mat')))
     end
@@ -177,7 +176,7 @@ function [F, A_sh, b_sh, A_loc, b_loc, n_x, N, Q_mat, g_mat] = genVIFromInitialS
     options = optimoptions('quadprog','Display','off');
     [~,~,exit_flag] = quadprog(eye(n_x*N), zeros(n_x*N,1), A_all, b_all, [],[],[],[],[],options);
     if exit_flag<0
-        error("[ol-NE] The VI is infeasible")
+        warning("[ol-NE] The VI is infeasible")
     end
 
 end
