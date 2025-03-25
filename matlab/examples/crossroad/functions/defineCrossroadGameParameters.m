@@ -10,12 +10,12 @@ n_x = n_agent_states * N;
 p.T_sampl = .1;
 p.headway_time = 0*ones(N,1); % this term is used to make safety distance dependend on speed, seconds. see paper.
 p.headway_time(1) = 0;
-p.v_des_1 = 8; %desired speed of leading vehicle, m/s
-p.max_speed = 12*ones(N,1); % upper speed limit, m/s
+p.v_des_1 = 6; %desired speed of leading vehicle, m/s
+p.max_speed = 10*ones(N,1); % upper speed limit, m/s
 p.min_speed = 1*ones(N,1); % lower speed limit, m/s
-p.d_des = 18*ones(N,1); % Desired safety distance, not dependent on speed, m
+p.d_des = 12*ones(N,1); % Desired safety distance, not dependent on speed, m
 p.d_des(1) = 0;
-p.d_min = 13*ones(N,1); % Minimum safety distance, m
+p.d_min = 10*ones(N,1); % Minimum safety distance, m
 p.max_acc = 30* ones(N,1); % Max acceleration, m/s^2
 p.min_acc = -30* ones(N,1); % Max acceleration, m/s^2
 

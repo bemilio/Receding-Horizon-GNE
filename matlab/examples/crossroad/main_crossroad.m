@@ -19,7 +19,7 @@ N = 10;
 n_x = 2 * N; 
 n_u = 1; % acceleration
 T = 10;
-T_sim = 200;
+T_sim = 300;
 
 N_tests = 1;
 
@@ -47,7 +47,7 @@ x_ol = zeros(n_x, 1, T_sim + 1, N_tests);
 err_shift = zeros(N_tests,1);
 %% Create an initial state in position-velocity coordinates and convert 
 % % Position is relative with the first agent and meas. unit is meters
-x_0_p(1) = param.d_min(1)*(N-1);
+x_0_p(1) = 0;
 for i=2:N
     % initialize the agents to be distant d_min plus something
     x_0_p(i) =  x_0_p(i-1) - param.d_min(1) - .2*param.d_min(1)*rand;

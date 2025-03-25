@@ -18,80 +18,137 @@ for t=1:T_sim-1
         p_abs(t+1,i) = p_abs(t, i) +  v(t,i) * param.T_sampl + squeeze(u_ol(1,1,i,t) - param.K(:,:,i) * x_ol(:,:,t)) * (param.T_sampl^2)/2;
     end
 end
-% Taslate everything so that all the vehicles appear in the picture
-% p = p+min(x_0_p);
 
+% Taslate everything so that there is only one vehicle at the beginning of
+% the animation
+if max(max(p_abs(1,:)))>0
+    p_abs = p_abs - max(max(p_abs(1,:)));
+end
 
 %% Plot roads
+
+
 % Create figure
 figure;
 hold on;
 axis equal;
 
-% Define vehicle and road sizes
-vehicleLength = 5;
-road_length = 160; %m 
-roadWidth = 8;
-laneOffset = roadWidth/2; % Offset from the centerline to the right lane
+road_length = 100; %m 
+roadWidth = 8; % Width of the road
 
-vehicleWidth = 3;
+% Define vehicle size
+vehicleWidth = 2;
+vehicleLength = 2.5*vehicleWidth;
 
-road_top = road_length/2;
-road_bottom = -road_length/2;
-road_right = road_length/2;
-road_left = -road_length/2;
+% Road 1: A smooth curved road using a cubic Bézier curve
+resolution=1000;
+t = linspace(0, 1, resolution+1); % Parameter for curve
+ % control points for Road 1. The first and last elements are the initial
+ % and final point of the road, respectively
+P1 = [[0, -road_length/2] - (road_length/10)*rand(1,2);  
+      (road_length/10)*randn(1,2);  
+      (road_length/10)*randn(1,2);   
+      [0, road_length/2 + 2*vehicleLength] + (road_length/10)*rand(1,2)]; 
+                        
+ 
+road1 = bezierCurve(P1, t);
 
-xlim([road_left road_right]);
-ylim([road_bottom road_top]);
+% Compute road angle (used to compute vehicle orientation)
+dx = diff(road1(:,1)); dy = diff(road1(:,2));
+angles_road1 = atan2(dy, dx); 
 
+% Compute normal vectors to shift the vehicle to the right lane
+laneOffset = roadWidth / 4; % Move the vehicle half a lane to the right
+normals_road1 = [-dy, dx]; % Perpendicular vector to the road
+normals_road1 = normals_road1 ./ vecnorm(normals_road1, 2, 2) * laneOffset; % Normalize & scale
 
-% Draw horizontal road
-fill([road_left road_right road_right road_left], [-roadWidth -roadWidth roadWidth roadWidth], [0.3 0.3 0.3], 'EdgeColor', 'none');
+% Road 2: Another curved road using a cubic Bézier curve
+P2 = [[-road_length/2 - 2*vehicleLength, 0] - (road_length/10)*rand(1,2);  
+      (road_length/10)*randn(1,2);  
+      (road_length/10)*randn(1,2);   
+      [road_length/2 + 2*vehicleLength, 0] + (road_length/10)*rand(1,2)]; 
 
-% Draw vertical road
-fill([-roadWidth roadWidth roadWidth -roadWidth], [road_bottom road_bottom road_top road_top], [0.3 0.3 0.3], 'EdgeColor', 'none');
+% Modify the second control point so that the midpoint of the two curves is
+% equal
+midpoint = bezierCurve(P1, .5);
+P2(2, 1) = (midpoint(1) - 0.125*P2(1,1) - 0.375*P2(3,1)  - 0.125*P2(4,1) )/ 0.375;
+P2(2, 2) = (midpoint(2) - 0.125*P2(1,2) - 0.375*P2(3,2)  - 0.125*P2(4,2) )/ 0.375;
 
-% Add dashed centerlines
-for x = road_left:2:road_right
-    plot([x x+1], [0 0], 'w--', 'LineWidth', 2);
-end
+road2 = bezierCurve(P2, t);
 
-for y = road_bottom:2:road_top
-    plot([0 0], [y y+1], 'w--', 'LineWidth', 2);
-end
+% Compute road angle (used to compute behicle orientation)
+dx = diff(road2(:,1)); dy = diff(road2(:,2));
+angles_road2 = atan2(dy, dx);
+
+% Compute normal vectors to shift the vehicle to the right lane
+normals_road2 = [-dy, dx]; % Perpendicular vector to the road
+normals_road2 = normals_road2 ./ vecnorm(normals_road2, 2, 2) * laneOffset; % Normalize & scale
+
+% Plot the roads
+drawRoad(road1, roadWidth, [0.4 0.4 0.4]); % Dark gray asphalt
+drawRoad(road2, roadWidth, [0.4 0.4 0.4]);
+
 
 % Create vehicles 
 yPos = -laneOffset; % Move vehicle to the right lane
-vehicleColor = 'r'; % Red car
+colors = lines(N); % vehicle and plot colors
 for i=1:N
     origin{i} = param.crossing_dir{i}(1); % N, S, E, W
     destination{i} = param.crossing_dir{i}(2); % N, S, E, W
 end
 for i=1:N 
     if origin{i}=='W'
-        vehicle(i) = fill(road_left + [-vehicleLength/2 vehicleLength/2 vehicleLength/2 -vehicleLength/2], ... %X coord.
-                                      [-vehicleWidth/2 -vehicleWidth/2 vehicleWidth/2 vehicleWidth/2] -laneOffset, ... %Y coord.
-                                      vehicleColor);
+        % Find the position of the beginning of the road, offset to the
+        % right lane
+        vehicle_x = road2(1, 1) - normals_road2(1,1);
+        vehicle_y = road2(1, 2) - normals_road2(1,2);
+
+        % Get the coordinates of the polygon defining the vehicle
+        vehicle_shape = vehicleShape(angles_road2(1), vehicleLength, vehicleWidth);
+        vehicle(i) = fill(vehicle_x + vehicle_shape(1,:), ... %X coord.
+                          vehicle_y + vehicle_shape(2,:), ... %Y coord.
+                                      colors(i,:));
     end 
     if origin{i} == 'N'
-        vehicle(i) = fill( [-vehicleWidth/2 vehicleWidth/2 vehicleWidth/2 -vehicleWidth/2] - laneOffset, ... % X-coordinates
-                           road_top + [-vehicleLength/2 -vehicleLength/2 vehicleLength/2 vehicleLength/2], ... % Y-coordinates
-                           vehicleColor);
+        % Find the position of the beginning of the road, offset to the
+        % right lane
+        vehicle_x = road1(end, 1) + normals_road1(end,1);
+        vehicle_y = road1(end, 2) + normals_road1(end,2);
+
+        % Get the coordinates of the polygon defining the vehicle
+        vehicle_shape = vehicleShape(angles_road1(end), vehicleLength, vehicleWidth);
+        vehicle(i) = fill(vehicle_x + vehicle_shape(1,:), ... %X coord.
+                          vehicle_y + vehicle_shape(2,:), ... %Y coord.
+                                      colors(i,:));
     end
 
     if origin{i} == 'E'
-        vehicle(i) = fill(road_right + [-vehicleLength/2 vehicleLength/2 vehicleLength/2 -vehicleLength/2], ... %X coord.
-                                       [-vehicleWidth/2 -vehicleWidth/2 vehicleWidth/2 vehicleWidth/2] + laneOffset, ... %Y coord.
-                                       vehicleColor);
+        % Find the position of the beginning of the road, offset to the
+        % right lane
+        vehicle_x = road2(end, 1) + normals_road2(end,1);
+        vehicle_y = road2(end, 2) + normals_road2(end,2);
+
+        % Get the coordinates of the polygon defining the vehicle
+        vehicle_shape = vehicleShape(angles_road2(end), vehicleLength, vehicleWidth);
+        vehicle(i) = fill(vehicle_x + vehicle_shape(1,:), ... %X coord.
+                          vehicle_y + vehicle_shape(2,:), ... %Y coord.
+                                      colors(i,:));
     end
     if origin{i} == 'S'
-        vehicle(i) = fill( [-vehicleWidth/2 vehicleWidth/2 vehicleWidth/2 -vehicleWidth/2] + laneOffset, ... % X-coordinates
-                           road_bottom + [-vehicleLength/2 -vehicleLength/2 vehicleLength/2 vehicleLength/2], ... % Y-coordinates
-                           vehicleColor);
+        % Find the position of the beginning of the road, offset to the
+        % right lane
+        vehicle_x = road1(1, 1) - normals_road1(1,1);
+        vehicle_y = road1(1, 2) - normals_road1(1,2);
+
+        % Get the coordinates of the polygon defining the vehicle
+        vehicle_shape = vehicleShape(angles_road1(1), vehicleLength, vehicleWidth);
+        vehicle(i) = fill(vehicle_x + vehicle_shape(1,:), ... %X coord.
+                          vehicle_y + vehicle_shape(2,:), ... %Y coord.
+                                      colors(i,:));
     end
     
 end
-
+axis off;
 % Video setup
 videoFilename = 'vehicle_animation.mp4';
 video = VideoWriter(videoFilename, 'MPEG-4');
@@ -104,17 +161,84 @@ gifFilename = 'vehicle_animation.gif';
 for t = 1:T_sim
     for i=1:N
         if origin{i}=='W' && destination{i} == 'E'
-            set(vehicle(i), 'XData', road_left + [-vehicleLength/2 vehicleLength/2 vehicleLength/2 -vehicleLength/2] + p_abs(t,i));
+            if p_abs(t,i)+vehicleLength/2<road_length && p_abs(t,i) - vehicleLength/2>0
+                set(vehicle(i), 'Visible', 'on'); 
+
+                % Find the position of the vehicle, offset to the right lane
+                road_progress = ceil((p_abs(t,i)/road_length) *resolution );
+
+                vehicle_x = road2(road_progress, 1) - normals_road2(road_progress,1);
+                vehicle_y = road2(road_progress, 2) - normals_road2(road_progress,2);
+        
+                % Get the coordinates of the polygon defining the vehicle
+                vehicle_shape = vehicleShape(angles_road2(road_progress), vehicleLength, vehicleWidth);
+                % Re-draw the vehicle
+                set(vehicle(i), 'XData', vehicle_x + vehicle_shape(1,:));
+                set(vehicle(i), 'YData', vehicle_y + vehicle_shape(2,:));
+            else
+                set(vehicle(i), 'Visible', 'off'); 
+            end
         end
         if origin{i}=='N' && destination{i} == 'S'
-            set(vehicle(i), 'YData', road_top + [-vehicleLength/2 -vehicleLength/2 vehicleLength/2 vehicleLength/2] - p_abs(t,i));
+            if p_abs(t,i)+vehicleLength/2<road_length && p_abs(t,i) - vehicleLength/2>0
+                set(vehicle(i), 'Visible', 'on'); 
+
+                % Find the position of the vehicle, offset to the
+                % right lane
+                road_progress = ceil((p_abs(t,i)/road_length) *resolution );
+                vehicle_x = road1(end-road_progress, 1) + normals_road1(end-road_progress,1);
+                vehicle_y = road1(end-road_progress, 2) + normals_road1(end-road_progress,2);
+        
+                % Get the coordinates of the polygon defining the vehicle
+                vehicle_shape = vehicleShape(angles_road1(end-road_progress), vehicleLength, vehicleWidth);
+                
+                % Re-draw the vehicle
+                set(vehicle(i), 'XData', vehicle_x + vehicle_shape(1,:));
+                set(vehicle(i), 'YData', vehicle_y + vehicle_shape(2,:));
+            else
+                set(vehicle(i), 'Visible', 'off'); 
+            end
         end
         if origin{i}=='E' && destination{i} == 'W'
-            set(vehicle(i), 'XData', road_right + [-vehicleLength/2 vehicleLength/2 vehicleLength/2 -vehicleLength/2] - p_abs(t,i));
+            if p_abs(t,i)+vehicleLength/2<road_length && p_abs(t,i)- vehicleLength/2>0
+                set(vehicle(i), 'Visible', 'on'); 
+
+                % Find the position of the vehicle, offset to the right lane
+                road_progress = ceil((p_abs(t,i)/road_length) *resolution );
+                vehicle_x = road2(end-road_progress, 1) + normals_road2(end-road_progress,1);
+                vehicle_y = road2(end-road_progress, 2) + normals_road2(end-road_progress,2);
+        
+                % Get the coordinates of the polygon defining the vehicle
+                vehicle_shape = vehicleShape(angles_road2(end-road_progress), vehicleLength, vehicleWidth);
+                
+                % Re-draw the vehicle
+                set(vehicle(i), 'XData', vehicle_x + vehicle_shape(1,:));
+                set(vehicle(i), 'YData', vehicle_y + vehicle_shape(2,:));
+            else
+                set(vehicle(i), 'Visible', 'off'); 
+            end
+                    
         end
 
         if origin{i}=='S' && destination{i} == 'N'
-            set(vehicle(i), 'YData', road_bottom + [-vehicleLength/2 -vehicleLength/2 vehicleLength/2 vehicleLength/2] + p_abs(t,i));
+            if p_abs(t,i)+vehicleLength/2<road_length && p_abs(t,i)- vehicleLength/2>0
+                set(vehicle(i), 'Visible', 'on'); 
+
+                % Find the position of the beginning of the road, offset to the
+                % right lane
+                road_progress = ceil((p_abs(t,i)/road_length) *resolution );
+                vehicle_x = road1(road_progress, 1) - normals_road1(road_progress,1);
+                vehicle_y = road1(road_progress, 2) - normals_road1(road_progress,2);
+        
+                % Get the coordinates of the polygon defining the vehicle
+                vehicle_shape = vehicleShape(angles_road1(road_progress), vehicleLength, vehicleWidth);
+                
+                % Re-draw the vehicle
+                set(vehicle(i), 'XData', vehicle_x + vehicle_shape(1,:));
+                set(vehicle(i), 'YData', vehicle_y + vehicle_shape(2,:));
+            else
+                set(vehicle(i), 'Visible', 'off'); 
+            end
         end
     end
     drawnow;
@@ -127,15 +251,20 @@ for t = 1:T_sim
     
     % Convert frame to an image for GIF
     img = frame2im(frame);
-    [imind, cm] = rgb2ind(img, 256);
+    [imind, cm] = rgb2ind(img, 256); 
 
     % Write frame to GIF
     timestep_frame = 0.05;
-
     if t == 1
         imwrite(imind, cm, gifFilename, 'gif', 'LoopCount', inf, 'DelayTime', timestep_frame);
     else
         imwrite(imind, cm, gifFilename, 'gif', 'WriteMode', 'append', 'DelayTime', timestep_frame);
+    end
+
+    % If we are in the middle of the simulation, save the frame in an image
+    if t==ceil(T_sim/4)
+        set(gcf, 'Color', 'w');
+        print('frame_crossroad.png', '-dpng', '-r600');  % Save with 600 dpi resolution
     end
     
     pause(timestep_frame); % Control speed of animation
@@ -150,35 +279,24 @@ disp(['GIF saved as ', gifFilename]);
 
 hold off;
 
-%% Plot the sequence
+%% Position plot
+
+% 1st plot: Position w.r.t vehicle ahead
 figure; 
-ax1 = subplot(3,1,1); % 3 rows, 1 column, first subplot
+ax1 = subplot(2,1,1); % 2 rows, 1 column, first subplot
 hold on
-colors = lines(N);
 x = linspace(0, (T_sim - 1) * param.T_sampl, T_sim);
 desired_position = 0; % We iteratively sum the desired distance of each agent to compute this value
 for i=1:N
     selectedColor = colors(i, :);
-    plot(x, p_abs(:,i), '-', 'DisplayName', "Agent " + num2str(i), 'Color',selectedColor, 'LineWidth',1.5);
-    if i~=N
-        % Plot the safety distance:
-
-        % Define the lower boundary for the shaded area
-        p_ol_lower = p_abs(:,i) - param.d_min(i+1) - v(:,i+1) * param.headway_time(i+1);
-
-        % Define the x and y coordinates for the shaded area
-        x_fill = [x, fliplr(x)];
-        y_fill = [p_abs(:,i)',fliplr(p_ol_lower')];
-
-        % Plot shaded area
-        fill(x_fill, y_fill, colors(i,:), 'FaceAlpha', 0.2, 'EdgeColor', 'none','HandleVisibility', 'off');
+    j=agentBefore(i,param.crossing_dir, param.conflicts_dict);
+    if ~isempty(j)
+        plot(x, p(:,j)-p(:,i), '-', 'DisplayName', "Agent " + num2str(i), 'Color',selectedColor, 'LineWidth',1.5);
+        yline(param.d_min(i), 'Color', [1 0.1 0.1], 'LineStyle', '--', 'LineWidth', 2,'HandleVisibility', 'off');
+        yline(param.d_des(i), 'Color', colors(1, :), 'LineStyle', ':', 'LineWidth', 2,'HandleVisibility', 'off');
     end
 end 
-hold on
-if run_cl
-    plot(p_cl, '-','DisplayName', "CL-NE");
-end
-ylabel('$p_i$ (m)', 'Interpreter','latex');
+ylabel('$p_j(t) - p_i(t)$ (m)', 'Interpreter','latex');
 grid on;
 set(gca, 'XTickLabel', []); % Remove x-tick labels from the top subplot
 legend
@@ -186,9 +304,10 @@ legend
 % Add label (a)
 text(1.02, 0.5, '(a)', 'Units', 'normalized', 'FontSize', 12, 'Interpreter', 'latex');
 
-
 %% plot velocity over time
-ax2 = subplot(3,1,2); % 3 rows, 1 column, second subplot
+
+
+ax2 = subplot(2,1,2); % 3 rows, 1 column, 3rd subplot
 hold on
 indexes_position = 1:n_x_per_agent:n_x;
 indexes_speed = 2:n_x_per_agent:n_x;
@@ -208,7 +327,7 @@ text(1.02, 0.5, '(b)', 'Units', 'normalized', 'FontSize', 12, 'Interpreter', 'la
 
 %% Adjust subplots
 % Link the x-axes
-linkaxes([ax1, ax2, ax3], 'x');
+linkaxes([ax1, ax2], 'x');
 
 % Remove the gap between the plots
 gap = 0.05; % Small gap between the plots
@@ -216,12 +335,10 @@ gap = 0.05; % Small gap between the plots
 % Adjust positions
 pos2 = get(ax2, 'Position');
 
-pos2(2) = pos3(2) + pos3(4) + gap; % Move ax2 above ax3
-set(ax2, 'Position', pos2);
-
 pos1 = get(ax1, 'Position');
 pos1(2) = pos2(2) + pos2(4) + gap; % Move ax1 above ax2
 set(ax1, 'Position', pos1);
 
 print('pos_velocity_dist_to_Xf.png', '-dpng', '-r600');  % Save with 600 dpi resolution
+
 
