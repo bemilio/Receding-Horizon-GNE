@@ -1,5 +1,5 @@
 % Function to draw a filled road area
-function drawRoad(road, width, color)
+function handle = drawRoad(road, width, color)
     % Calculate normal vectors for width
     dx = diff(road(:,1)); dy = diff(road(:,2));
     norms = [dy, -dx]; % Perpendicular vector
@@ -9,7 +9,7 @@ function drawRoad(road, width, color)
     leftEdge = road(1:end-1, :) + norms;
     rightEdge = road(1:end-1, :) - norms;
     roadPatch = [leftEdge; flipud(rightEdge)];
-    fill(roadPatch(:,1), roadPatch(:,2), color, 'EdgeColor', 'none');
+    handle = fill(roadPatch(:,1), roadPatch(:,2), color, 'EdgeColor', 'none');
     %drawDashedLine(road); BROKEN
 end
 

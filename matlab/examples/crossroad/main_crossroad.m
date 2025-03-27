@@ -13,13 +13,13 @@ seed = 1;
 rng(seed); 
 eps = 10^(-4);
 
-N = 10; 
+N = 15; 
 % state For each agent: position error, speed error. 
 % %Note: the position error of the leading vehicle is constant 0 (dummy state)
 n_x = 2 * N; 
 n_u = 1; % acceleration
 T = 10;
-T_sim = 300;
+T_sim = 400;
 
 N_tests = 1;
 

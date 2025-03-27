@@ -34,7 +34,7 @@ hold on;
 axis equal;
 
 road_length = 100; %m 
-roadWidth = 8; % Width of the road
+roadWidth = 15; % Width of the road
 
 % Define vehicle size
 vehicleWidth = 2;
@@ -51,22 +51,19 @@ P1 = [[0, -road_length/2] - (road_length/10)*rand(1,2);
       [0, road_length/2 + 2*vehicleLength] + (road_length/10)*rand(1,2)]; 
                         
  
-road1 = bezierCurve(P1, t);
+roadSN = bezierCurve(P1, t);
 
-% Compute road angle (used to compute vehicle orientation)
-dx = diff(road1(:,1)); dy = diff(road1(:,2));
-angles_road1 = atan2(dy, dx); 
-
-% Compute normal vectors to shift the vehicle to the right lane
-laneOffset = roadWidth / 4; % Move the vehicle half a lane to the right
-normals_road1 = [-dy, dx]; % Perpendicular vector to the road
-normals_road1 = normals_road1 ./ vecnorm(normals_road1, 2, 2) * laneOffset; % Normalize & scale
+% Compute road angle (used to compute vehicle orientation) and
+%  normal vectors to shift the vehicle to the right lane
+laneOffset = roadWidth / 6; % Move the vehicle half a lane to the right
+[normals_roadSN, tangent_vecsSN, angles_roadSN] = computeRoadAngleNormalTangent(roadSN);
+normals_roadSN = normals_roadSN * laneOffset; % scale 
 
 % Road 2: Another curved road using a cubic Bézier curve
-P2 = [[-road_length/2 - 2*vehicleLength, 0] - (road_length/10)*rand(1,2);  
-      (road_length/10)*randn(1,2);  
-      (road_length/10)*randn(1,2);   
-      [road_length/2 + 2*vehicleLength, 0] + (road_length/10)*rand(1,2)]; 
+P2 = [[-road_length/2 - 2*vehicleLength, 0] - (road_length/4)*rand(1,2);  
+      ([-road_length/2 - 2*vehicleLength, 0] + [road_length/2 + 2*vehicleLength, 0])/2 + (road_length/10)*randn(1,2);  
+      ([-road_length/2 - 2*vehicleLength, 0] + [road_length/2 + 2*vehicleLength, 0])/2 + (road_length/10)*randn(1,2); 
+      [road_length/2 + 2*vehicleLength, 0] + (road_length/4)*rand(1,2)]; 
 
 % Modify the second control point so that the midpoint of the two curves is
 % equal
@@ -74,19 +71,37 @@ midpoint = bezierCurve(P1, .5);
 P2(2, 1) = (midpoint(1) - 0.125*P2(1,1) - 0.375*P2(3,1)  - 0.125*P2(4,1) )/ 0.375;
 P2(2, 2) = (midpoint(2) - 0.125*P2(1,2) - 0.375*P2(3,2)  - 0.125*P2(4,2) )/ 0.375;
 
-road2 = bezierCurve(P2, t);
+roadWE = bezierCurve(P2, t);
 
-% Compute road angle (used to compute behicle orientation)
-dx = diff(road2(:,1)); dy = diff(road2(:,2));
-angles_road2 = atan2(dy, dx);
+% Compute road angle (used to compute vehicle orientation) and
+%  normal vectors to shift the vehicle to the right lane
+[normals_roadWE, tangent_vecsWE, angles_roadWE] = computeRoadAngleNormalTangent(roadWE);
+normals_roadWE = normals_roadWE * laneOffset; % scale 
 
-% Compute normal vectors to shift the vehicle to the right lane
-normals_road2 = [-dy, dx]; % Perpendicular vector to the road
-normals_road2 = normals_road2 ./ vecnorm(normals_road2, 2, 2) * laneOffset; % Normalize & scale
+% Compute roads that blend the two original roads
+[roadWN, roadNE, roadES, roadSW] = blendRoads(roadSN, roadWE, .4, .6);
+
+% Compute normal vectors and road angles
+% WN
+[normals_roadWN, tangent_vecsWN, angles_roadWN] = computeRoadAngleNormalTangent(roadWN);
+normals_roadWN = normals_roadWN * laneOffset; % scale 
+% NE
+[normals_roadNE, tangent_vecsNE, angles_roadNE] = computeRoadAngleNormalTangent(roadNE);
+normals_roadNE = normals_roadNE * laneOffset; % scale 
+% ES
+[normals_roadES, tangent_vecsES, angles_roadES] = computeRoadAngleNormalTangent(roadES);
+normals_roadES = normals_roadES * laneOffset; % scale 
+% SW
+[normals_roadSW, tangent_vecsSW, angles_roadSW] = computeRoadAngleNormalTangent(roadSW);
+normals_roadSW = normals_roadSW * laneOffset; % scale 
 
 % Plot the roads
-drawRoad(road1, roadWidth, [0.4 0.4 0.4]); % Dark gray asphalt
-drawRoad(road2, roadWidth, [0.4 0.4 0.4]);
+drawRoad(roadSN, roadWidth, [0.7 0.7 0.7]); % Dark gray asphalt
+drawRoad(roadWE, roadWidth, [0.7 0.7 0.7]);
+drawRoad(roadWN, roadWidth, [0.7 0.7 0.7]);
+drawRoad(roadNE, roadWidth, [0.7 0.7 0.7]);
+drawRoad(roadES, roadWidth, [0.7 0.7 0.7]);
+drawRoad(roadSW, roadWidth, [0.7 0.7 0.7]);
 
 
 % Create vehicles 
@@ -100,11 +115,11 @@ for i=1:N
     if origin{i}=='W'
         % Find the position of the beginning of the road, offset to the
         % right lane
-        vehicle_x = road2(1, 1) - normals_road2(1,1);
-        vehicle_y = road2(1, 2) - normals_road2(1,2);
+        vehicle_x = roadWE(1, 1) - normals_roadWE(1,1);
+        vehicle_y = roadWE(1, 2) - normals_roadWE(1,2);
 
         % Get the coordinates of the polygon defining the vehicle
-        vehicle_shape = vehicleShape(angles_road2(1), vehicleLength, vehicleWidth);
+        vehicle_shape = vehicleShape(angles_roadWE(1), vehicleLength, vehicleWidth);
         vehicle(i) = fill(vehicle_x + vehicle_shape(1,:), ... %X coord.
                           vehicle_y + vehicle_shape(2,:), ... %Y coord.
                                       colors(i,:));
@@ -112,11 +127,11 @@ for i=1:N
     if origin{i} == 'N'
         % Find the position of the beginning of the road, offset to the
         % right lane
-        vehicle_x = road1(end, 1) + normals_road1(end,1);
-        vehicle_y = road1(end, 2) + normals_road1(end,2);
+        vehicle_x = roadSN(end, 1) + normals_roadSN(end,1);
+        vehicle_y = roadSN(end, 2) + normals_roadSN(end,2);
 
         % Get the coordinates of the polygon defining the vehicle
-        vehicle_shape = vehicleShape(angles_road1(end), vehicleLength, vehicleWidth);
+        vehicle_shape = vehicleShape(angles_roadSN(end), vehicleLength, vehicleWidth);
         vehicle(i) = fill(vehicle_x + vehicle_shape(1,:), ... %X coord.
                           vehicle_y + vehicle_shape(2,:), ... %Y coord.
                                       colors(i,:));
@@ -125,11 +140,11 @@ for i=1:N
     if origin{i} == 'E'
         % Find the position of the beginning of the road, offset to the
         % right lane
-        vehicle_x = road2(end, 1) + normals_road2(end,1);
-        vehicle_y = road2(end, 2) + normals_road2(end,2);
+        vehicle_x = roadWE(end, 1) + normals_roadWE(end,1);
+        vehicle_y = roadWE(end, 2) + normals_roadWE(end,2);
 
         % Get the coordinates of the polygon defining the vehicle
-        vehicle_shape = vehicleShape(angles_road2(end), vehicleLength, vehicleWidth);
+        vehicle_shape = vehicleShape(angles_roadWE(end), vehicleLength, vehicleWidth);
         vehicle(i) = fill(vehicle_x + vehicle_shape(1,:), ... %X coord.
                           vehicle_y + vehicle_shape(2,:), ... %Y coord.
                                       colors(i,:));
@@ -137,11 +152,11 @@ for i=1:N
     if origin{i} == 'S'
         % Find the position of the beginning of the road, offset to the
         % right lane
-        vehicle_x = road1(1, 1) - normals_road1(1,1);
-        vehicle_y = road1(1, 2) - normals_road1(1,2);
+        vehicle_x = roadSN(1, 1) - normals_roadSN(1,1);
+        vehicle_y = roadSN(1, 2) - normals_roadSN(1,2);
 
         % Get the coordinates of the polygon defining the vehicle
-        vehicle_shape = vehicleShape(angles_road1(1), vehicleLength, vehicleWidth);
+        vehicle_shape = vehicleShape(angles_roadSN(1), vehicleLength, vehicleWidth);
         vehicle(i) = fill(vehicle_x + vehicle_shape(1,:), ... %X coord.
                           vehicle_y + vehicle_shape(2,:), ... %Y coord.
                                       colors(i,:));
@@ -156,7 +171,7 @@ open(video);
 
 % GIF setup
 gifFilename = 'vehicle_animation.gif';
-
+shadow_handle = cell(N,1);
 % Animation loop
 for t = 1:T_sim
     for i=1:N
@@ -167,18 +182,173 @@ for t = 1:T_sim
                 % Find the position of the vehicle, offset to the right lane
                 road_progress = ceil((p_abs(t,i)/road_length) *resolution );
 
-                vehicle_x = road2(road_progress, 1) - normals_road2(road_progress,1);
-                vehicle_y = road2(road_progress, 2) - normals_road2(road_progress,2);
+                vehicle_x = roadWE(road_progress, 1) - normals_roadWE(road_progress,1);
+                vehicle_y = roadWE(road_progress, 2) - normals_roadWE(road_progress,2);
         
                 % Get the coordinates of the polygon defining the vehicle
-                vehicle_shape = vehicleShape(angles_road2(road_progress), vehicleLength, vehicleWidth);
+                vehicle_shape = vehicleShape(angles_roadWE(road_progress), vehicleLength, vehicleWidth);
                 % Re-draw the vehicle
                 set(vehicle(i), 'XData', vehicle_x + vehicle_shape(1,:));
                 set(vehicle(i), 'YData', vehicle_y + vehicle_shape(2,:));
+
+                % Draw shadow on the road with length proportional to speed
+                % Take a piece of road in front of the vehicle
+                arrow_tip_idx = min(road_progress + 10*ceil(v(t,i)), length(roadWE));
+                road_section = roadWE(road_progress:arrow_tip_idx,:) - normals_roadWE(road_progress,:);
+                % Delete any precedingly drawn shadow
+                if ~isempty(shadow_handle{i})
+                    delete(shadow_handle{i});
+                end
+                % Draw the piece of road in front of the vehicle
+                shadow_handle{i} = drawRoad(road_section, vehicleWidth/4, colors(i,:));
             else
                 set(vehicle(i), 'Visible', 'off'); 
+                if ~isempty(shadow_handle{i})
+                    delete(shadow_handle{i});
+                end
             end
         end
+
+        if origin{i}=='W' && destination{i} == 'N'
+            if p_abs(t,i)+vehicleLength/2<road_length && p_abs(t,i) - vehicleLength/2>0
+                set(vehicle(i), 'Visible', 'on'); 
+
+                % Find the position of the vehicle, offset to the right lane
+                road_progress = ceil((p_abs(t,i)/road_length) *resolution );
+
+                vehicle_x = roadWN(road_progress, 1) - normals_roadWN(road_progress,1);
+                vehicle_y = roadWN(road_progress, 2) - normals_roadWN(road_progress,2);
+
+                % Get the coordinates of the polygon defining the vehicle
+                vehicle_shape = vehicleShape(angles_roadWN(road_progress), vehicleLength, vehicleWidth);
+                % Re-draw the vehicle
+                set(vehicle(i), 'XData', vehicle_x + vehicle_shape(1,:));
+                set(vehicle(i), 'YData', vehicle_y + vehicle_shape(2,:));
+
+                % Draw shadow on the road with length proportional to speed
+                % Take a piece of road in front of the vehicle
+                arrow_tip_idx = min(road_progress + 10*ceil(v(t,i)), length(roadWE));
+                road_section = roadWN(road_progress:arrow_tip_idx,:) - normals_roadWN(road_progress,:);
+                % Delete any precedingly drawn shadow
+                if ~isempty(shadow_handle{i})
+                    delete(shadow_handle{i});
+                end
+                % Draw the piece of road in front of the vehicle
+                shadow_handle{i} = drawRoad(road_section, vehicleWidth/4, colors(i,:));
+            else
+                set(vehicle(i), 'Visible', 'off'); 
+                if ~isempty(shadow_handle{i})
+                    delete(shadow_handle{i});
+                end
+            end
+        end
+
+        if origin{i}=='W' && destination{i} == 'S'
+            if p_abs(t,i)+vehicleLength/2<road_length && p_abs(t,i) - vehicleLength/2>0
+                set(vehicle(i), 'Visible', 'on'); 
+
+                % Find the position of the vehicle, offset to the right lane
+                road_progress = ceil((p_abs(t,i)/road_length) *resolution );
+
+                vehicle_x = roadSW(end-road_progress, 1) + normals_roadSW(end-road_progress,1);
+                vehicle_y = roadSW(end-road_progress, 2) + normals_roadSW(end-road_progress,2);
+
+                % Get the coordinates of the polygon defining the vehicle
+                vehicle_shape = vehicleShape(angles_roadSW(end-road_progress), vehicleLength, vehicleWidth);
+                % Re-draw the vehicle
+                set(vehicle(i), 'XData', vehicle_x + vehicle_shape(1,:));
+                set(vehicle(i), 'YData', vehicle_y + vehicle_shape(2,:));
+
+                % Draw shadow on the road with length proportional to speed
+                % Take a piece of road in front of the vehicle
+                arrow_tip_idx = max(length(roadSW) - road_progress - 10*ceil(v(t,i)), 1);
+                road_section = roadSW(arrow_tip_idx:end-road_progress,:) + normals_roadSW(end-road_progress,:);
+                % Delete any precedingly drawn shadow
+                if ~isempty(shadow_handle{i})
+                    delete(shadow_handle{i});
+                end
+                % Draw the piece of road in front of the vehicle
+                shadow_handle{i} = drawRoad(road_section, vehicleWidth/4, colors(i,:));
+
+            else
+                set(vehicle(i), 'Visible', 'off'); 
+                if ~isempty(shadow_handle{i})
+                    delete(shadow_handle{i});
+                end
+            end
+        end
+
+        if origin{i}=='N' && destination{i} == 'E'
+            if p_abs(t,i)+vehicleLength/2<road_length && p_abs(t,i) - vehicleLength/2>0
+                set(vehicle(i), 'Visible', 'on'); 
+
+                % Find the position of the vehicle, offset to the
+                % right lane
+                road_progress = ceil((p_abs(t,i)/road_length) *resolution );
+                vehicle_x = roadNE(road_progress, 1) - normals_roadNE(road_progress,1);
+                vehicle_y = roadNE(road_progress, 2) - normals_roadNE(road_progress,2);
+        
+                % Get the coordinates of the polygon defining the vehicle
+                vehicle_shape = vehicleShape(angles_roadNE(road_progress), vehicleLength, vehicleWidth);
+                
+                % Re-draw the vehicle
+                set(vehicle(i), 'XData', vehicle_x + vehicle_shape(1,:));
+                set(vehicle(i), 'YData', vehicle_y + vehicle_shape(2,:));
+
+                % Draw shadow on the road with length proportional to speed
+                % Take a piece of road in front of the vehicle
+                arrow_tip_idx = min(road_progress + 10*ceil(v(t,i)), length(roadNE));
+                road_section = roadNE(road_progress:arrow_tip_idx,:) - normals_roadNE(road_progress,:);
+                % Delete any precedingly drawn shadow
+                if ~isempty(shadow_handle{i})
+                    delete(shadow_handle{i});
+                end
+                % Draw the piece of road in front of the vehicle
+                shadow_handle{i} = drawRoad(road_section, vehicleWidth/4, colors(i,:));
+            else
+                set(vehicle(i), 'Visible', 'off'); 
+                if ~isempty(shadow_handle{i})
+                    delete(shadow_handle{i});
+                end
+            end
+        end
+
+        if origin{i}=='N' && destination{i} == 'W'
+            if p_abs(t,i)+vehicleLength/2<road_length && p_abs(t,i) - vehicleLength/2>0
+                set(vehicle(i), 'Visible', 'on'); 
+
+                % Find the position of the vehicle, offset to the
+                % right lane
+                road_progress = ceil((p_abs(t,i)/road_length) *resolution );
+                vehicle_x = roadWN(end-road_progress, 1) + normals_roadWN(end-road_progress,1);
+                vehicle_y = roadWN(end-road_progress, 2) + normals_roadWN(end-road_progress,2);
+                
+                % Get the coordinates of the polygon defining the vehicle
+                vehicle_shape = vehicleShape(angles_roadWN(end-road_progress), vehicleLength, vehicleWidth);
+                
+                % Re-draw the vehicle
+                set(vehicle(i), 'XData', vehicle_x + vehicle_shape(1,:));
+                set(vehicle(i), 'YData', vehicle_y + vehicle_shape(2,:));
+
+                % Draw shadow on the road with length proportional to speed
+                % Take a piece of road in front of the vehicle
+                arrow_tip_idx = max(length(roadSW) - road_progress - 10*ceil(v(t,i)), 1);
+                road_section = roadWN(arrow_tip_idx:end-road_progress,:) + normals_roadWN(end-road_progress,:);
+                % Delete any precedingly drawn shadow
+                if ~isempty(shadow_handle{i})
+                    delete(shadow_handle{i});
+                end
+                % Draw the piece of road in front of the vehicle
+                shadow_handle{i} = drawRoad(road_section, vehicleWidth/4, colors(i,:));
+
+            else
+                set(vehicle(i), 'Visible', 'off'); 
+                if ~isempty(shadow_handle{i})
+                    delete(shadow_handle{i});
+                end
+            end
+        end
+
         if origin{i}=='N' && destination{i} == 'S'
             if p_abs(t,i)+vehicleLength/2<road_length && p_abs(t,i) - vehicleLength/2>0
                 set(vehicle(i), 'Visible', 'on'); 
@@ -186,17 +356,32 @@ for t = 1:T_sim
                 % Find the position of the vehicle, offset to the
                 % right lane
                 road_progress = ceil((p_abs(t,i)/road_length) *resolution );
-                vehicle_x = road1(end-road_progress, 1) + normals_road1(end-road_progress,1);
-                vehicle_y = road1(end-road_progress, 2) + normals_road1(end-road_progress,2);
-        
+                vehicle_x = roadSN(end-road_progress, 1) + normals_roadSN(end-road_progress,1);
+                vehicle_y = roadSN(end-road_progress, 2) + normals_roadSN(end-road_progress,2);
+                
                 % Get the coordinates of the polygon defining the vehicle
-                vehicle_shape = vehicleShape(angles_road1(end-road_progress), vehicleLength, vehicleWidth);
+                vehicle_shape = vehicleShape(angles_roadSN(end-road_progress), vehicleLength, vehicleWidth);
                 
                 % Re-draw the vehicle
                 set(vehicle(i), 'XData', vehicle_x + vehicle_shape(1,:));
                 set(vehicle(i), 'YData', vehicle_y + vehicle_shape(2,:));
+
+                % Draw shadow on the road with length proportional to speed
+                % Take a piece of road in front of the vehicle
+                arrow_tip_idx = max(length(roadSN) - road_progress - 10*ceil(v(t,i)), 1);
+                road_section = roadSN(arrow_tip_idx:end-road_progress,:) + normals_roadSN(end-road_progress,:);
+                % Delete any precedingly drawn shadow
+                if ~isempty(shadow_handle{i})
+                    delete(shadow_handle{i});
+                end
+                % Draw the piece of road in front of the vehicle
+                shadow_handle{i} = drawRoad(road_section, vehicleWidth/4, colors(i,:));
+                
             else
                 set(vehicle(i), 'Visible', 'off'); 
+                if ~isempty(shadow_handle{i})
+                    delete(shadow_handle{i});
+                end
             end
         end
         if origin{i}=='E' && destination{i} == 'W'
@@ -205,15 +390,92 @@ for t = 1:T_sim
 
                 % Find the position of the vehicle, offset to the right lane
                 road_progress = ceil((p_abs(t,i)/road_length) *resolution );
-                vehicle_x = road2(end-road_progress, 1) + normals_road2(end-road_progress,1);
-                vehicle_y = road2(end-road_progress, 2) + normals_road2(end-road_progress,2);
+                vehicle_x = roadWE(end-road_progress, 1) + normals_roadWE(end-road_progress,1);
+                vehicle_y = roadWE(end-road_progress, 2) + normals_roadWE(end-road_progress,2);
         
                 % Get the coordinates of the polygon defining the vehicle
-                vehicle_shape = vehicleShape(angles_road2(end-road_progress), vehicleLength, vehicleWidth);
+                vehicle_shape = vehicleShape(angles_roadWE(end-road_progress), vehicleLength, vehicleWidth);
                 
                 % Re-draw the vehicle
                 set(vehicle(i), 'XData', vehicle_x + vehicle_shape(1,:));
                 set(vehicle(i), 'YData', vehicle_y + vehicle_shape(2,:));
+
+                % Draw shadow on the road with length proportional to speed
+                % Take a piece of road in front of the vehicle
+                arrow_tip_idx = max(length(roadWE) - road_progress - 10*ceil(v(t,i)), 1);
+                road_section = roadWE(arrow_tip_idx:end-road_progress,:) + normals_roadWE(end-road_progress,:);
+                % Delete any precedingly drawn shadow
+                if ~isempty(shadow_handle{i})
+                    delete(shadow_handle{i});
+                end
+                % Draw the piece of road in front of the vehicle
+                shadow_handle{i} = drawRoad(road_section, vehicleWidth/4, colors(i,:));
+            else
+                set(vehicle(i), 'Visible', 'off'); 
+                if ~isempty(shadow_handle{i})
+                    delete(shadow_handle{i});
+                end
+            end
+                    
+        end
+
+        if origin{i}=='E' && destination{i} == 'N'
+            if p_abs(t,i)+vehicleLength/2<road_length && p_abs(t,i)- vehicleLength/2>0
+                set(vehicle(i), 'Visible', 'on'); 
+
+                % Find the position of the vehicle, offset to the right lane
+                road_progress = ceil((p_abs(t,i)/road_length) *resolution );
+                vehicle_x = roadNE(end-road_progress, 1) + normals_roadNE(end-road_progress,1);
+                vehicle_y = roadNE(end-road_progress, 2) + normals_roadNE(end-road_progress,2);
+        
+                % Get the coordinates of the polygon defining the vehicle
+                vehicle_shape = vehicleShape(angles_roadNE(end-road_progress), vehicleLength, vehicleWidth);
+                
+                % Re-draw the vehicle
+                set(vehicle(i), 'XData', vehicle_x + vehicle_shape(1,:));
+                set(vehicle(i), 'YData', vehicle_y + vehicle_shape(2,:));
+
+                % Draw shadow on the road with length proportional to speed
+                % Take a piece of road in front of the vehicle
+                arrow_tip_idx = max(length(roadNE) - road_progress - 10*ceil(v(t,i)), 1);
+                road_section = roadNE(arrow_tip_idx:end-road_progress,:) + normals_roadNE(end-road_progress,:);
+                % Delete any precedingly drawn shadow
+                if ~isempty(shadow_handle{i})
+                    delete(shadow_handle{i});
+                end
+                % Draw the piece of road in front of the vehicle
+                shadow_handle{i} = drawRoad(road_section, vehicleWidth/4, colors(i,:));
+            else
+                set(vehicle(i), 'Visible', 'off'); 
+            end
+        end
+
+        if origin{i}=='E' && destination{i} == 'S'
+            if p_abs(t,i)+vehicleLength/2<road_length && p_abs(t,i)- vehicleLength/2>0
+                set(vehicle(i), 'Visible', 'on'); 
+
+                % Find the position of the vehicle, offset to the right lane
+                road_progress = ceil((p_abs(t,i)/road_length) *resolution );
+                vehicle_x = roadES(road_progress, 1) - normals_roadES(road_progress,1);
+                vehicle_y = roadES(road_progress, 2) - normals_roadES(road_progress,2);
+        
+                % Get the coordinates of the polygon defining the vehicle
+                vehicle_shape = vehicleShape(angles_roadES(road_progress), vehicleLength, vehicleWidth);
+                
+                % Re-draw the vehicle
+                set(vehicle(i), 'XData', vehicle_x + vehicle_shape(1,:));
+                set(vehicle(i), 'YData', vehicle_y + vehicle_shape(2,:));
+
+                % Draw shadow on the road with length proportional to speed
+                % Take a piece of road in front of the vehicle
+                arrow_tip_idx = min(road_progress + 10*ceil(v(t,i)), length(roadNE));
+                road_section = roadES(road_progress:arrow_tip_idx,:) - normals_roadES(road_progress,:);
+                % Delete any precedingly drawn shadow
+                if ~isempty(shadow_handle{i})
+                    delete(shadow_handle{i});
+                end
+                % Draw the piece of road in front of the vehicle
+                shadow_handle{i} = drawRoad(road_section, vehicleWidth/4, colors(i,:));
             else
                 set(vehicle(i), 'Visible', 'off'); 
             end
@@ -227,19 +489,98 @@ for t = 1:T_sim
                 % Find the position of the beginning of the road, offset to the
                 % right lane
                 road_progress = ceil((p_abs(t,i)/road_length) *resolution );
-                vehicle_x = road1(road_progress, 1) - normals_road1(road_progress,1);
-                vehicle_y = road1(road_progress, 2) - normals_road1(road_progress,2);
-        
+                vehicle_x = roadSN(road_progress, 1) - normals_roadSN(road_progress,1);
+                vehicle_y = roadSN(road_progress, 2) - normals_roadSN(road_progress,2);
+
                 % Get the coordinates of the polygon defining the vehicle
-                vehicle_shape = vehicleShape(angles_road1(road_progress), vehicleLength, vehicleWidth);
+                vehicle_shape = vehicleShape(angles_roadSN(road_progress), vehicleLength, vehicleWidth);
                 
                 % Re-draw the vehicle
                 set(vehicle(i), 'XData', vehicle_x + vehicle_shape(1,:));
                 set(vehicle(i), 'YData', vehicle_y + vehicle_shape(2,:));
+
+                % Draw shadow on the road with length proportional to speed
+                % Take a piece of road in front of the vehicle
+                arrow_tip_idx = min(road_progress + 10*ceil(v(t,i)), length(roadSN));
+                road_section = roadSN(road_progress:arrow_tip_idx,:) - normals_roadSN(road_progress,:);
+                % Delete any precedingly drawn shadow
+                if ~isempty(shadow_handle{i})
+                    delete(shadow_handle{i});
+                end
+                % Draw the piece of road in front of the vehicle
+                shadow_handle{i} = drawRoad(road_section, vehicleWidth/4, colors(i,:));
             else
                 set(vehicle(i), 'Visible', 'off'); 
             end
         end
+
+        if origin{i}=='S' && destination{i} == 'E'
+            if p_abs(t,i)+vehicleLength/2<road_length && p_abs(t,i)- vehicleLength/2>0
+                set(vehicle(i), 'Visible', 'on'); 
+
+                % Find the position of the beginning of the road, offset to the
+                % right lane
+                road_progress = ceil((p_abs(t,i)/road_length) *resolution );
+                vehicle_x = roadES(end - road_progress, 1) + normals_roadES(end-road_progress,1);
+                vehicle_y = roadES(end - road_progress, 2) + normals_roadES(end-road_progress,2);
+
+                % Get the coordinates of the polygon defining the vehicle
+                vehicle_shape = vehicleShape(angles_roadES(end-road_progress), vehicleLength, vehicleWidth);
+                
+                % Re-draw the vehicle
+                set(vehicle(i), 'XData', vehicle_x + vehicle_shape(1,:));
+                set(vehicle(i), 'YData', vehicle_y + vehicle_shape(2,:));
+
+                % Draw shadow on the road with length proportional to speed
+                % Take a piece of road in front of the vehicle
+                arrow_tip_idx = max(length(roadES) - road_progress - 10*ceil(v(t,i)), 1);
+                road_section = roadES(arrow_tip_idx:end-road_progress,:) + normals_roadES(end-road_progress,:);
+                % Delete any precedingly drawn shadow
+                if ~isempty(shadow_handle{i})
+                    delete(shadow_handle{i});
+                end
+                % Draw the piece of road in front of the vehicle
+                shadow_handle{i} = drawRoad(road_section, vehicleWidth/4, colors(i,:));
+            else
+                set(vehicle(i), 'Visible', 'off'); 
+            end
+        end
+
+        if origin{i}=='S' && destination{i} == 'W'
+            if p_abs(t,i)+vehicleLength/2<road_length && p_abs(t,i)- vehicleLength/2>0
+                set(vehicle(i), 'Visible', 'on'); 
+
+                % Find the position of the beginning of the road, offset to the
+                % right lane
+                road_progress = ceil((p_abs(t,i)/road_length) *resolution );
+                vehicle_x = roadSW(road_progress, 1) - normals_roadSW(road_progress,1);
+                vehicle_y = roadSW(road_progress, 2) - normals_roadSW(road_progress,2);
+
+                % Get the coordinates of the polygon defining the vehicle
+                vehicle_shape = vehicleShape(angles_roadSW(road_progress), vehicleLength, vehicleWidth);
+                
+                % Re-draw the vehicle
+                set(vehicle(i), 'XData', vehicle_x + vehicle_shape(1,:));
+                set(vehicle(i), 'YData', vehicle_y + vehicle_shape(2,:));
+
+                % Draw shadow on the road with length proportional to speed
+                % Take a piece of road in front of the vehicle
+                arrow_tip_idx = min(road_progress + 10*ceil(v(t,i)), length(roadSW));
+                road_section = roadSW(road_progress:arrow_tip_idx,:) - normals_roadSW(road_progress,:);
+                % Delete any precedingly drawn shadow
+                if ~isempty(shadow_handle{i})
+                    delete(shadow_handle{i});
+                end
+                % Draw the piece of road in front of the vehicle
+                shadow_handle{i} = drawRoad(road_section, vehicleWidth/4, colors(i,:));
+                
+            else
+                set(vehicle(i), 'Visible', 'off'); 
+            end
+        end
+
+        
+
     end
     drawnow;
 
