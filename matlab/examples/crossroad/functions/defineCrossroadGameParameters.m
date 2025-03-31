@@ -15,7 +15,7 @@ p.max_speed = 10*ones(N,1); % upper speed limit, m/s
 p.min_speed = 1*ones(N,1); % lower speed limit, m/s
 p.d_des = 15*ones(N,1); % Desired safety distance, not dependent on speed, m
 p.d_des(1) = 0;
-p.d_min = 10*ones(N,1); % Minimum safety distance, m
+p.d_min = 8*ones(N,1); % Minimum safety distance, m
 p.max_acc = 30* ones(N,1); % Max acceleration, m/s^2
 p.min_acc = -30* ones(N,1); % Max acceleration, m/s^2
 
@@ -54,7 +54,9 @@ p.crossings_conflicts = {
 
 % Define desired directions that agents take on the crossroad
 p.crossing_dir = randsample(p.all_crossing_dir, N, true);
-% p.crossing_dir = ["WE", "EW", "SN", "SN", "NS", "NS", "WE", "SN", "SN", "WE"];
+p.crossing_dir = ["NS", "ES", "WE", "NW", "WN", "WN",...
+                  "WS", "NE", "NE", "EW", "NS", ...
+                  "ES", "WS", "SW", "WE"];
 
 % Create dictionary that maps from direction on crossroad to all
 % conflicting directions

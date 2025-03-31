@@ -57,6 +57,10 @@ x_0_v = param.min_speed ...
 
 x_0 = convertPosVelToState(x_0_p, x_0_v, param.v_des_1, param.d_des, param.headway_time, param.crossing_dir, param.conflicts_dict);
 
+iter_to_convergence_DR = zeros(T_sim,1);
+iter_to_convergence_FB = zeros(T_sim,1);
+
+
 test = 1;
 %% Run tests
 while test<N_tests + 1
@@ -73,6 +77,7 @@ while test<N_tests + 1
         disp("timestep = " + num2str(t));
         if t>1
             u_ol_warm_start = u_shift_ol(:,:, :, t-1);
+            % u_ol_warm_start = randn(n_u * T, 1, N);
         else
             u_ol_warm_start = zeros(n_u * T, 1, N);
         end
@@ -82,8 +87,11 @@ while test<N_tests + 1
             [VI.F, VI.A_sh, VI.b_sh, VI.A_loc, VI.b_loc, VI.n_x, VI.N, VI.Q, VI.q]...
                 = game.VI_generator(x_ol(:,:,t,test));
             dual_warm_start = dual;
-            [u_full_traj_ol(:,:,:,t), res, solved(t)] = solveVICentrDR(VI, 10^6, eps, ...
+            [u_full_traj_ol(:,:,:,t), res, solved(t), iter_to_convergence_DR(t)] = solveVICentrDR(VI, 10^6, eps, ...
                 0.5, eye(VI.N * VI.n_x), u_ol_warm_start);
+            [u_full_traj_ol(:,:,:,t), res, solved(t), iter_to_convergenceFB(t)] = ...
+                solveVICentrFB(VI, 10^6, eps, ...
+                0.2, 0.2, u_ol_warm_start);
             u_full_traj_ol(:,:,:,t) = u_full_traj_ol(:,:,:,t);
             u_ol(:,:,:,t,test) = u_full_traj_ol(1:n_u,:,:,t);
             x_ol(:,:,t+1,test) = evolveState(x_ol(:,:,t,test), game.A, game.B, u_ol(:, :,:, t), 1, n_u);
@@ -97,7 +105,7 @@ while test<N_tests + 1
     test = test+1;
 end
 
-save("workspace_variables.mat", "x_ol", "u_ol", "param")
+save("workspace_variables.mat", "x_ol", "u_ol", "param", "iter_to_convergence_DR")
 plot_crossroad
 
 disp( "Job complete" )

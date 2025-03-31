@@ -1,4 +1,4 @@
-function [x, d, r, solved] = solveVICentrFB(VI, ...
+function [x, d, r, solved, iteration] = solveVICentrFB(VI, ...
                               n_iter, ...
                               eps_err, ...
                               p_step, ...
@@ -56,10 +56,13 @@ for k =1:n_iter
     end
     if r(k) < eps_err
         solved = true;
+        iteration = k;
         break
     end
 end
-
+if r(k) >= eps_err
+    iteration = inf;
+end
 end
 
 function [x_new,d_new] = run_FB_once(x,d, F, A_sh, b_sh, B, p_step, d_step)

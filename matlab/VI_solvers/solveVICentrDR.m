@@ -1,4 +1,4 @@
-function [x, r, solved] = solveVICentrDR(VI, ...
+function [x, r, solved, iter] = solveVICentrDR(VI, ...
                               n_iter, ...
                               eps_err, ...
                               stepsize, ...
@@ -47,8 +47,8 @@ b_all = [b_loc_all; b_sh_all];
 
 % Define symmetric and non-symmetric parts of the VI
 Q = VI.Q;
-M_1 = (Q - Q')/2;
-M_2 = (Q + Q')/2;
+M_1 = (Q - Q')/2 + (Q + Q')/4;
+M_2 = (Q + Q')/4;
 
 % Define relevant inverse matrix for the D-R algorihm
 G_inv = eye(size(Q,1))/(H + M_1);
@@ -66,8 +66,12 @@ for k =1:n_iter
     end
     if r(k) < eps_err
         solved = true;
+        iter = k;
         break
     end
+end
+if r(k) >= eps_err
+    iter = inf;
 end
 
 end

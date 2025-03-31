@@ -2,6 +2,8 @@ close all
 
 n_x_per_agent = 2;
 
+
+
 %% Conversion from error variables to actual speed/position
 % Compute relative positions w.r.t. leading vehicles, and absolute velocity
 for t = 1:T_sim
@@ -29,7 +31,10 @@ end
 
 
 % Create figure
-figure;
+fig = figure;
+set(gcf, 'Color', 'w');
+set(gca, 'LooseInset', max(get(gca, 'TightInset'), 0)); % Remove extra padding
+set(fig, 'PaperPositionMode', 'auto'); % Adjusts paper size to figure
 hold on;
 axis equal;
 
@@ -37,7 +42,7 @@ road_length = 100; %m
 roadWidth = 15; % Width of the road
 
 % Define vehicle size
-vehicleWidth = 2;
+vehicleWidth = 1.5;
 vehicleLength = 2.5*vehicleWidth;
 
 % Road 1: A smooth curved road using a cubic Bézier curve
@@ -102,6 +107,30 @@ drawRoad(roadWN, roadWidth, [0.7 0.7 0.7]);
 drawRoad(roadNE, roadWidth, [0.7 0.7 0.7]);
 drawRoad(roadES, roadWidth, [0.7 0.7 0.7]);
 drawRoad(roadSW, roadWidth, [0.7 0.7 0.7]);
+
+
+% Add dashed line along car path
+plot(roadSN(1:end-1,1)+normals_roadSN(:,1), roadSN(1:end-1,2)+normals_roadSN(:,2), 'Linestyle', ':', 'LineWidth', 1, 'Color', [0.6 0.6 0.6])
+plot(roadSN(1:end-1,1)-normals_roadSN(:,1), roadSN(1:end-1,2)-normals_roadSN(:,2), 'Linestyle', ':', 'LineWidth', 1, 'Color', [0.6 0.6 0.6])
+
+plot(roadWE(1:end-1,1)+normals_roadWE(:,1), roadWE(1:end-1,2)+normals_roadWE(:,2), 'Linestyle', ':', 'LineWidth', 1, 'Color', [0.6 0.6 0.6])
+plot(roadWE(1:end-1,1)-normals_roadWE(:,1), roadWE(1:end-1,2)-normals_roadWE(:,2), 'Linestyle', ':', 'LineWidth', 1, 'Color', [0.6 0.6 0.6])
+
+plot(roadWN(1:end-1,1)+normals_roadWN(:,1), roadWN(1:end-1,2)+normals_roadWN(:,2), 'Linestyle', ':', 'LineWidth', 1, 'Color', [0.6 0.6 0.6])
+plot(roadWN(1:end-1,1)-normals_roadWN(:,1), roadWN(1:end-1,2)-normals_roadWN(:,2), 'Linestyle', ':', 'LineWidth', 1, 'Color', [0.6 0.6 0.6])
+
+plot(roadNE(1:end-1,1)+normals_roadNE(:,1), roadNE(1:end-1,2)+normals_roadNE(:,2), 'Linestyle', ':', 'LineWidth', 1, 'Color', [0.6 0.6 0.6])
+plot(roadNE(1:end-1,1)-normals_roadNE(:,1), roadNE(1:end-1,2)-normals_roadNE(:,2), 'Linestyle', ':', 'LineWidth', 1, 'Color', [0.6 0.6 0.6])
+
+plot(roadES(1:end-1,1)+normals_roadES(:,1), roadES(1:end-1,2)+normals_roadES(:,2), 'Linestyle', ':', 'LineWidth', 1, 'Color', [0.6 0.6 0.6])
+plot(roadES(1:end-1,1)-normals_roadES(:,1), roadES(1:end-1,2)-normals_roadES(:,2), 'Linestyle', ':', 'LineWidth', 1, 'Color', [0.6 0.6 0.6])
+
+plot(roadSW(1:end-1,1)+normals_roadSW(:,1), roadSW(1:end-1,2)+normals_roadSW(:,2), 'Linestyle', ':', 'LineWidth', 1, 'Color', [0.6 0.6 0.6])
+plot(roadSW(1:end-1,1)-normals_roadSW(:,1), roadSW(1:end-1,2)-normals_roadSW(:,2), 'Linestyle', ':', 'LineWidth', 1, 'Color', [0.6 0.6 0.6])
+
+% Add white mid line
+plot(roadSN(:,1), roadSN(:,2), 'LineStyle','--', 'LineWidth', 2, 'Color','w')
+plot(roadWE(:,1), roadWE(:,2), 'LineStyle','--', 'LineWidth', 2, 'Color','w')
 
 
 % Create vehicles 
@@ -173,6 +202,7 @@ open(video);
 gifFilename = 'vehicle_animation.gif';
 shadow_handle = cell(N,1);
 % Animation loop
+idx_figure = 1;
 for t = 1:T_sim
     for i=1:N
         if origin{i}=='W' && destination{i} == 'E'
@@ -601,11 +631,13 @@ for t = 1:T_sim
     else
         imwrite(imind, cm, gifFilename, 'gif', 'WriteMode', 'append', 'DelayTime', timestep_frame);
     end
+    
+
 
     % If we are in the middle of the simulation, save the frame in an image
-    if t==ceil(T_sim/4)
-        set(gcf, 'Color', 'w');
-        print('frame_crossroad.png', '-dpng', '-r600');  % Save with 600 dpi resolution
+    if mod(t, T_sim/20) == 0
+        print("Figures/frame_crossroad_" + num2str(idx_figure) + ".png", '-dpng', '-r600');  % Save with 600 dpi resolution
+        idx_figure = idx_figure + 1;
     end
     
     pause(timestep_frame); % Control speed of animation
@@ -623,7 +655,7 @@ hold off;
 %% Position plot
 
 % 1st plot: Position w.r.t vehicle ahead
-figure; 
+fig = figure; 
 ax1 = subplot(2,1,1); % 2 rows, 1 column, first subplot
 hold on
 x = linspace(0, (T_sim - 1) * param.T_sampl, T_sim);
@@ -640,7 +672,7 @@ end
 ylabel('$p_j(t) - p_i(t)$ (m)', 'Interpreter','latex');
 grid on;
 set(gca, 'XTickLabel', []); % Remove x-tick labels from the top subplot
-legend
+
 
 % Add label (a)
 text(1.02, 0.5, '(a)', 'Units', 'normalized', 'FontSize', 12, 'Interpreter', 'latex');
@@ -680,6 +712,20 @@ pos1 = get(ax1, 'Position');
 pos1(2) = pos2(2) + pos2(4) + gap; % Move ax1 above ax2
 set(ax1, 'Position', pos1);
 
-print('pos_velocity_dist_to_Xf.png', '-dpng', '-r600');  % Save with 600 dpi resolution
+set(gca, 'LooseInset', max(get(gca, 'TightInset'), 0)); % Remove extra padding
+set(fig, 'PaperPositionMode', 'auto'); % Adjusts paper size to figure
+print('Figures/pos_velocity_dist_to_Xf.png', '-dpng', '-r600');  % Save with 600 dpi resolution
+
+%% Plot number of iterations to convergence
+
+fig = figure;
+stairs(x, iter_to_convergence,'marker', '+', 'LineWidth', 1);
+grid on
+xlabel('$t$', 'Interpreter','latex');
+ylabel('\# iterations', 'Interpreter','latex');
+set(gca, 'LooseInset', max(get(gca, 'TightInset'), 0)); % Remove extra padding
+set(fig, 'PaperPositionMode', 'auto'); % Adjusts paper size to figure
+
+print('Figures/num_iter_to_convergence.png', '-dpng', '-r600');  % Save with 600 dpi resolution
 
 
