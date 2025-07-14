@@ -132,7 +132,21 @@ function [J,F, A_sh, b_sh, A_loc, b_loc, n_x, N] = genVIFromInitialState( ...
         sel_mat(:, (i-1)*n_u*T_hor+1:i*n_u*T_hor,i) = eye(n_u*T_hor);
     end
     Q = pagemtimes(sel_mat, W);
-    F = @(u) pagemtimes(Q, rep(u)) + pagemtimes(sel_mat, g);
+    g = pagemtimes(sel_mat, pagemtimes(G, x_0));
+    F = @(u) pagemtimes(Q, rep(u)) + g;
+
+    % Generate matrices for alternative comput. of F as Q*u + g
+    Q_mat = zeros(T_hor * N * n_u, T_hor * N * n_u);
+    g_mat = zeros(T_hor * N * n_u, 1);
+    for i=1:N
+        Q_mat( (i-1) * n_u * T_hor + 1:i*n_u* T_hor, :) = Q(:,:,i);
+        g_mat( (i-1) * n_u * T_hor + 1:i*n_u* T_hor, :) = g(:,:,i);
+    end
+    if min(eig(Q_mat + Q_mat')) <= -eps
+        warning("The OL-NE VI is not monotone: the minimum eigenvalue is %.2d for the mapping matrix \n", min(eig(Q_mat + Q_mat')))
+    else
+        fprintf("The OL-NE VI is monotone with min eigenvalue %.2d for the mapping matrix \n", min(eig(Q_mat + Q_mat')))
+    end
     
     n_sh_const_u = size(C_u_sh,1);
     n_const_x = size(C_x,1);
@@ -165,8 +179,8 @@ function [J,F, A_sh, b_sh, A_loc, b_loc, n_x, N] = genVIFromInitialState( ...
     b_all = [b_all; sum(b_sh, 3)];
     options = optimoptions('quadprog','Display','off');
     [~,~,exit_flag] = quadprog(eye(n_x*N), zeros(n_x*N,1), A_all, b_all, [],[],[],[],[],options);
-    if exit_flag~=1
-        error("[ol-NE] The VI is infeasible")
+    if exit_flag<0
+        warning("[ol-NE] The VI is infeasible")
     end
 
 end

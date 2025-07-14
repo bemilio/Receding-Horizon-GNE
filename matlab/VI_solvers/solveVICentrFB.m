@@ -1,4 +1,4 @@
-function [x, d, r, solved] = solveVICentrFB(VI, ...
+function [x, d, r, solved, iteration] = solveVICentrFB(VI, ...
                               n_iter, ...
                               eps_err, ...
                               p_step, ...
@@ -29,6 +29,8 @@ if ~exist ('d', 'var')
     d = zeros(size(VI.A_sh, 1), 1);
 end
 
+r = zeros(n_iter,1);
+
 n_loc_constr = size(VI.A_loc, 1);
 A_loc_all = zeros(VI.N * n_loc_constr, VI.N * VI.n_x);
 b_loc_all = zeros(VI.N * n_loc_constr, 1);
@@ -43,19 +45,24 @@ projection = @(y) reshape( ...
 
 solved = false;
 for k =1:n_iter
+    
+    r(k) = compute_residual(x,d, VI.F, VI.A_sh, VI.b_sh, projection);
+
     [x, d] = run_FB_once(x, d, VI.F, VI.A_sh, VI.b_sh, projection, p_step, d_step);
-    if mod(k,20)==0
-        r = compute_residual(x,d, VI.F, VI.A_sh, VI.b_sh, projection);
-        if mod(k,300)==0
-            disp("Residual: " + num2str(r));
-        end
-        if r < eps_err
-            solved = true;
-            break
-        end
+    
+    % Display residual
+    if mod(k,300)==0
+        disp("Residual: " + num2str(r(k)));
+    end
+    if r(k) < eps_err
+        solved = true;
+        iteration = k;
+        break
     end
 end
-
+if r(k) >= eps_err
+    iteration = inf;
+end
 end
 
 function [x_new,d_new] = run_FB_once(x,d, F, A_sh, b_sh, B, p_step, d_step)
