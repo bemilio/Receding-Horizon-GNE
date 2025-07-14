@@ -2,7 +2,7 @@ function [VIgen] = computeVIGenerator(game,T_hor)
 %COMPUTEVIGENERATOR returns a function that maps from state to the VI which
 % characterizes the open-loop Nash equilibrium problem
     predmod = genPredModel(game.A, game.B, T_hor);
-    [W, G] = defineVIMatrices(game, T_hor, predmod);
+    [W, G, H] = defineVICostFunction(game, T_hor, predmod);
     % create the stacked matrices that define the constraints over the entire
     % horizon
     % C_u_loc(:,:,i) * u_i <= d_u_loc(:,:,i)
@@ -13,7 +13,7 @@ function [VIgen] = computeVIGenerator(game,T_hor)
     [C_x, D_x, d_x] = generateStateConstr(predmod, game.C_x, game.d_x, T_hor); 
     [C_mix, D_mix, d_mix] = generateMixedConstr(predmod, game.C_x_mix, game.C_u_mix, game.d_mix, T_hor);
     VIgen = @(x_0) genVIFromInitialState(...
-        W,G,...
+        W,G,H,...
         C_u_loc_all,d_u_loc_all,...
         C_u_sh, d_u_sh,...
         C_x,D_x,d_x,...
@@ -21,19 +21,19 @@ function [VIgen] = computeVIGenerator(game,T_hor)
         x_0, game.N, game.n_u, T_hor);
 end
 
-function [W, G] = defineVIMatrices(game, T_hor, predmod)
-% Define the matrices W,G such that
-% F(x,u) = W_i u + G_ix_0
-% The matrices are defined as:
-% W_i = S'Q_iS + R_i, G_i = S'Q_iT
+function [W, G, H] = defineVICostFunction(game, T_hor, predmod)
+
+% Define the cost
+% J_i = .5 u'W_iu + u'G_ix_0 + .5 x_0'H_ix_0
+% where W = S'Q_iS + R_i, G_i = S'Q_iT, H_i = T'Q_iT
 % S and T define the prediction model x = Tx_0 + Su
-% (with abuse of notation) Q_i = blkdiag( kron(I, Q_i), P_i ) + R_i 
+% (with abuse of notation) Q_i = blkdiag( kron(I, Q_i), P_i ) + R_i (right hand side is related to stage cost)
 % R_i = [kron(I,R_ii), 0;
 %        0,            0] (up to permutation)
-% :return: W, G, 3-D numpy arrays which are the stacks respectively of W_i, G_i
+% :return: W, G, H 3-D numpy arrays which are the stacks respectively of W_i, G_i, H_i
 W = zeros(game.n_u * game.N * T_hor, game.n_u * game.N * T_hor, game.N);
 G = zeros(game.n_u * game.N * T_hor, game.n_x, game.N);
-% H = zeros(game.n_x, game.n_x, game.N);
+H = zeros(game.n_x, game.n_x, game.N);
 S_all = reshape(predmod.S, game.n_x * T_hor, game.N * game.n_u * T_hor); % horizontal stack of all S(:,:,i)
 for i =1:game.N
     Q_i = blkdiag(kron(eye(T_hor-1), game.Q(:,:,i)), game.P_ol(:,:,i));
@@ -42,12 +42,10 @@ for i =1:game.N
         W(1+(i-1)*game.n_u*T_hor : i*game.n_u*T_hor, 1+(i-1)*game.n_u*T_hor : i*game.n_u*T_hor, i) + ...
         kron(eye(T_hor), game.R(:,:,i));
     G(:, :, i) = S_all' * Q_i * predmod.T;
-    % H(:, :, i) = predmod.T' * Q_i * predmod.T;
+    H(:, :, i) = predmod.T' * Q_i * predmod.T;
 end
 
 end
-
-
 
 function [C_all, d_all] = generateInputConstr(C, d, T_hor)
     n_constr = size(C, 1);
@@ -111,8 +109,8 @@ function [C_all, D_all, d_all] = generateMixedConstr(predmod, C_x, C_u, d, T_hor
 end
 
 
-function [F, A_sh, b_sh, A_loc, b_loc, n_x, N, Q_mat, g_mat] = genVIFromInitialState( ...
-                                        W,G,...
+function [J,F, A_sh, b_sh, A_loc, b_loc, n_x, N] = genVIFromInitialState( ...
+                                        W,G,H,...
                                         C_u_loc,d_u_loc, ...
                                         C_u_sh,d_u_sh, ...
                                         C_x,D_x,d_x, ...
@@ -121,12 +119,18 @@ function [F, A_sh, b_sh, A_loc, b_loc, n_x, N, Q_mat, g_mat] = genVIFromInitialS
 
     % given an n*m*p array createa a np * m * p array, where each page of
     % the new array is the column stack of all pages of the original array
-    rep = @(u) repmat(reshape(u, [n_u * N * T_hor,1] ), 1,1,N); % For each i, take the rows associated to agent i in W(:,:,i)
+    rep = @(u) repmat(reshape(u, [n_u * N * T_hor,1] ), 1,1,N); 
+    for i=1:N
+        h(i) = .5*x_0'*H(:,:,i)*x_0;
+    end
+    g = pagemtimes(G, x_0);
+    J = @(u) .5 * pagemtimes(T3D(rep(u)), pagemtimes(W,rep(u))) + ...
+        pagemtimes(T3D(rep(u)), g) + h;
+    % For each i, take the rows associated to agent i in W(:,:,i)
     sel_mat = zeros(n_u*T_hor, n_u * N * T_hor, N);  
     for i=1:N
         sel_mat(:, (i-1)*n_u*T_hor+1:i*n_u*T_hor,i) = eye(n_u*T_hor);
     end
-    
     Q = pagemtimes(sel_mat, W);
     g = pagemtimes(sel_mat, pagemtimes(G, x_0));
     F = @(u) pagemtimes(Q, rep(u)) + g;

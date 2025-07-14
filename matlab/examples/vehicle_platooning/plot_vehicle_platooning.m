@@ -20,7 +20,7 @@ end
 
 % Plot the sequence
 figure; 
-ax1 = subplot(3,1,1); % 3 rows, 1 column, first subplot
+ax1 = subplot(2,1,1); % 2 rows, 1 column, second subplot
 hold on
 colors = lines(N);
 x = linspace(0, (T_sim - 1) * param.T_sampl, T_sim);
@@ -41,6 +41,7 @@ for i=1:N
         fill(x_fill, y_fill, colors(i,:), 'FaceAlpha', 0.2, 'EdgeColor', 'none','HandleVisibility', 'off');
     end
 end 
+%TODO: plot closed loop
 hold on
 if run_cl
     plot(p_cl, '-','DisplayName', "CL-NE");
@@ -53,9 +54,9 @@ legend
 % Add label (a)
 text(1.02, 0.5, '(a)', 'Units', 'normalized', 'FontSize', 12, 'Interpreter', 'latex');
 
-
 %% plot velocity over time
 ax2 = subplot(3,1,2); % 3 rows, 1 column, second subplot
+
 hold on
 indexes_position = 1:n_x_per_agent:n_x;
 indexes_speed = 2:n_x_per_agent:n_x;
@@ -103,7 +104,5 @@ set(ax1, 'Position', pos1);
 
 
 print('pos_velocity_dist_to_Xf.png', '-dpng', '-r600');  % Save with 600 dpi resolution
-
-
 
 

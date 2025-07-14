@@ -127,7 +127,6 @@ end
 
 function [C_all, D_all, d_all] = generateMixedConstr(predmod, C_x, C_u, d, T_hor)
 % TODO
-    warning("Warning: mixed state/input constraints not implemented")
     n_x = size(predmod.T{1}, 2);
     N = size(predmod.S{1}, 3);
     n_u = size(predmod.S{1}, 2)/T_hor;
@@ -214,7 +213,7 @@ function [J,F, A_sh, b_sh, A_loc, b_loc, n_x, N] = genVIFromInitialState( ...
     b_all = [b_all; sum(b_sh, 3)];
     options = optimoptions('quadprog','Display','off');
     [~,~,exit_flag] = quadprog(eye(n_x*N), zeros(n_x*N,1), A_all, b_all, [],[],[],[],[],options);
-    if exit_flag<1
+    if exit_flag~=1
         error("[surrogate cl-NE] The VI is infeasible")
     end
 
