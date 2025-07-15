@@ -1,6 +1,7 @@
-function [P,K, isStable] = solveInfHorOL(game, n_iter, eps_err)
-%SOLVEINFHORCL 
-
+function [P,K, solved, isStable] = solveInfHorOL(game, n_iter, eps_err, stepsize)
+if ~exist('stepsize', 'var')
+    stepsize = 0.1;
+end
 %% Check if basic assumptions are satisfied
 if min(abs(eig(game.A)))<eps_err
     warning("[solveInfHorOL] The matrix A appears singular")
@@ -43,7 +44,7 @@ for k=1:n_iter
     A_cl = A + sum(pagemtimes(B, K), 3);
     for i=1:N
         try
-            P(:,:,i) = sylvester(A_T_inv, -A_cl, A_T_inv * Q(:,:,i));  % solves -A.T @ X A_cl + X - Q[i] = 0
+            P(:,:,i) = (1 - stepsize) * P(:,:,i) + stepsize *  sylvester(A_T_inv, -A_cl, A_T_inv * Q(:,:,i));  % solves -A.T @ X A_cl + X - Q[i] = 0
         catch e
             disp("[solveInfHorOL] An error occurred while solving the Sylvester equation: " + e.message)
             all_good = false;
@@ -69,6 +70,9 @@ end
 %TODO:complete
 if err > eps_err
     disp("[solve_open_loop_inf_hor_problem] Could not find solution")
+    solved = false;
+else
+    solved = true;
 end
 % for i=1:N
 %     if min(eig(P(:,:,i))) < 0
