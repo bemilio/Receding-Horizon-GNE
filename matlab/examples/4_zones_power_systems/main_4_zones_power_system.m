@@ -103,7 +103,7 @@ while test<N_tests + 1
         end
         %% Solve open-loop MPC problem
         if isInfHorStable_ol
-            [VI.J, VI.F, VI.A_sh, VI.b_sh, VI.A_loc, VI.b_loc, VI.n_x, VI.N]...
+            [VI.F, VI.A_sh, VI.b_sh, VI.A_loc, VI.b_loc, VI.n_x, VI.N]...
                 = game.VI_generator(x_ol(:,:,t,test));
             dual_warm_start = dual;
             [u_full_traj_ol(:,:,:,t), dual, res, solved(t)] = solveVICentrFB(VI, 10^5, 10^(-4), ...
@@ -161,5 +161,4 @@ disp( "Job complete" )
 
 % END script
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
 

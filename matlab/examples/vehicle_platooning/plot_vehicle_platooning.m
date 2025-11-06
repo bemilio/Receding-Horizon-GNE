@@ -91,15 +91,15 @@ linkaxes([ax1, ax2, ax3], 'x');
 gap = 0.05; % Small gap between the plots
 
 % Adjust positions
-pos2 = get(ax2, 'Position');
-pos3 = get(ax3, 'Position');
-
-pos2(2) = pos3(2) + pos3(4) + gap; % Move ax2 above ax3
-set(ax2, 'Position', pos2);
-
-pos1 = get(ax1, 'Position');
-pos1(2) = pos2(2) + pos2(4) + gap; % Move ax1 above ax2
-set(ax1, 'Position', pos1);
+% pos2 = get(ax2, 'Position');
+% pos3 = get(ax3, 'Position');
+% 
+% pos2(2) = pos3(2) + pos3(4) + gap; % Move ax2 above ax3
+% set(ax2, 'Position', pos2);
+% 
+% pos1 = get(ax1, 'Position');
+% pos1(2) = pos2(2) + pos2(4) + gap; % Move ax1 above ax2
+% set(ax1, 'Position', pos1);
 
 
 

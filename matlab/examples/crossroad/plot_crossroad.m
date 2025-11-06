@@ -28,7 +28,11 @@ if max(max(p_abs(1,:)))>0
 end
 
 %% Plot roads
-
+cd(fileparts(mfilename('fullpath'))); % Move to path of this script
+if ~exist('Figures', 'dir') 
+    % Create Figures subfolder
+    mkdir('Figures');
+end
 
 % Create figure
 fig = figure;
@@ -194,8 +198,8 @@ for i=1:N
 end
 axis off;
 % Video setup
-videoFilename = 'vehicle_animation.mp4';
-video = VideoWriter(videoFilename, 'MPEG-4');
+videoFilename = 'vehicle_animation.avi';
+video = VideoWriter(videoFilename, 'Motion JPEG AVI');
 open(video);
 
 % GIF setup
@@ -719,12 +723,17 @@ print('Figures/pos_velocity_dist_to_Xf.png', '-dpng', '-r600');  % Save with 600
 %% Plot number of iterations to convergence
 
 fig = figure;
-stairs(x, iter_to_convergence,'marker', '+', 'LineWidth', 1);
+stairs(x, iter_to_convergence_DR,'marker', '+', 'LineWidth', 1);
+if exist("iter_to_convergence_FB", 'var')
+    hold on
+    stairs(x, iter_to_convergence_FB,'marker', '+', 'LineWidth', 1);
+end
 grid on
 xlabel('$t$', 'Interpreter','latex');
 ylabel('\# iterations', 'Interpreter','latex');
 set(gca, 'LooseInset', max(get(gca, 'TightInset'), 0)); % Remove extra padding
 set(fig, 'PaperPositionMode', 'auto'); % Adjusts paper size to figure
+legend("DR", "FB")
 
 print('Figures/num_iter_to_convergence.png', '-dpng', '-r600');  % Save with 600 dpi resolution
 
