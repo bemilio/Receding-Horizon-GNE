@@ -109,7 +109,7 @@ function [C_all, D_all, d_all] = generateMixedConstr(predmod, C_x, C_u, d, T_hor
 end
 
 
-function [J,F, A_sh, b_sh, A_loc, b_loc, n_x, N] = genVIFromInitialState( ...
+function [F, A_sh, b_sh, A_loc, b_loc, n_x, N, Q_mat, q_mat] = genVIFromInitialState( ...
                                         W,G,H,...
                                         C_u_loc,d_u_loc, ...
                                         C_u_sh,d_u_sh, ...
@@ -123,24 +123,24 @@ function [J,F, A_sh, b_sh, A_loc, b_loc, n_x, N] = genVIFromInitialState( ...
     for i=1:N
         h(i) = .5*x_0'*H(:,:,i)*x_0;
     end
-    g = pagemtimes(G, x_0);
+    q = pagemtimes(G, x_0);
     J = @(u) .5 * pagemtimes(T3D(rep(u)), pagemtimes(W,rep(u))) + ...
-        pagemtimes(T3D(rep(u)), g) + h;
+        pagemtimes(T3D(rep(u)), q) + h;
     % For each i, take the rows associated to agent i in W(:,:,i)
     sel_mat = zeros(n_u*T_hor, n_u * N * T_hor, N);  
     for i=1:N
         sel_mat(:, (i-1)*n_u*T_hor+1:i*n_u*T_hor,i) = eye(n_u*T_hor);
     end
     Q = pagemtimes(sel_mat, W);
-    g = pagemtimes(sel_mat, pagemtimes(G, x_0));
-    F = @(u) pagemtimes(Q, rep(u)) + g;
+    q = pagemtimes(sel_mat, pagemtimes(G, x_0));
+    F = @(u) pagemtimes(Q, rep(u)) + q;
 
-    % Generate matrices for alternative comput. of F as Q*u + g
+    % Generate matrices for alternative comput. of F as Q*u + q
     Q_mat = zeros(T_hor * N * n_u, T_hor * N * n_u);
-    g_mat = zeros(T_hor * N * n_u, 1);
+    q_mat = zeros(T_hor * N * n_u, 1);
     for i=1:N
         Q_mat( (i-1) * n_u * T_hor + 1:i*n_u* T_hor, :) = Q(:,:,i);
-        g_mat( (i-1) * n_u * T_hor + 1:i*n_u* T_hor, :) = g(:,:,i);
+        q_mat( (i-1) * n_u * T_hor + 1:i*n_u* T_hor, :) = q(:,:,i);
     end
     if min(eig(Q_mat + Q_mat')) <= -eps
         warning("The OL-NE VI is not monotone: the minimum eigenvalue is %.2d for the mapping matrix \n", min(eig(Q_mat + Q_mat')))

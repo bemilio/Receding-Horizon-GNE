@@ -68,7 +68,7 @@ while test<N_tests + 1
     x_ol(:, :, 1, test) = x_0(:,:,test);
     if isInfHorStable_ol
         game.VI_generator = computeVIGenerator(game, T);
-        [~, ~, A_sh, ~, ~, ~] = game.VI_generator(x_0(:,:,test)); % Computed here just to get the number of shared constrains and initialize the dual
+        [~, A_sh, ~, ~, ~, ~,~,~,~] = game.VI_generator(x_0(:,:,test)); % Computed here just to get the number of shared constrains and initialize the dual
         n_sh_constraints = size(A_sh,1);
         dual = zeros(n_sh_constraints, 1);
     end
@@ -89,9 +89,8 @@ while test<N_tests + 1
             dual_warm_start = dual;
             [u_full_traj_ol(:,:,:,t), res, solved(t), iter_to_convergence_DR(t)] = solveVICentrDR(VI, 10^6, eps, ...
                 0.5, eye(VI.N * VI.n_x), u_ol_warm_start);
-            [u_full_traj_ol(:,:,:,t), res, solved(t), iter_to_convergenceFB(t)] = ...
-                solveVICentrFB(VI, 10^6, eps, ...
-                0.2, 0.2, u_ol_warm_start);
+            % [u_full_traj_ol(:,:,:,t), res, solved(t), iter_to_convergenceFB(t)] = ...
+                % solveVICentrFB(VI, 10^6, eps, 0.2, 0.2, u_ol_warm_start);
             u_full_traj_ol(:,:,:,t) = u_full_traj_ol(:,:,:,t);
             u_ol(:,:,:,t,test) = u_full_traj_ol(1:n_u,:,:,t);
             x_ol(:,:,t+1,test) = evolveState(x_ol(:,:,t,test), game.A, game.B, u_ol(:, :,:, t), 1, n_u);

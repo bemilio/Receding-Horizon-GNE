@@ -31,10 +31,10 @@ game = defineBasicGame();
 [game.P_cl, game.K_cl, isInfHorStable_cl] = solveInfHorCL(game, 10000, 10^(-6));
 [game.P_ol, game.K_ol, isInfHorStable_ol] = solveInfHorOL(game, 1000, 10^(-6));
 
-[game.C_x, game.d_x, game.C_u_loc, game.d_u_loc] = defineConstraints(N, n_x, n_u);
+[game.C_x, game.d_x, game.C_u_loc, game.d_u_loc, game.C_u_mix, game.C_x_mix, game.d_mix] = defineConstraints(N, n_x, n_u);
 
 [game.C_u_sh, game.d_u_sh] = defineDummySharedInputConstraints(n_u, N);
-    
+
 x_cl = zeros(n_x, 1, T_sim + 1);
 x_ol = zeros(n_x, 1, T_sim + 1);
 % is_init_state_reachable = false;
@@ -58,7 +58,7 @@ for test = 1:N_tests
     
     if isInfHorStable_ol
         game.VI_generator = computeVIGenerator(game, T);
-        [~, ~, A_sh, ~, ~, ~] = game.VI_generator(x_0);
+        [~, A_sh, ~, ~, ~, ~, ~ ,~ , ~] = game.VI_generator(x_0);
         n_sh_constraints = size(A_sh,1);
         dual = zeros(n_sh_constraints, 1);
     end
@@ -73,10 +73,10 @@ for test = 1:N_tests
         end
         %% Solve open-loop MPC problem
         if isInfHorStable_ol
-            [VI.J, VI.F, VI.A_sh, VI.b_sh, VI.A_loc, VI.b_loc, VI.n_x, VI.N]...
+            [VI.F, VI.A_sh, VI.b_sh, VI.A_loc, VI.b_loc, VI.n_x, VI.N, VI.Q, VI.q]...
                 = game.VI_generator(x_ol(:,t));
             dual_warm_start = dual;
-            [u_full_traj_ol(:,:,:,t), dual, res, solved(t)] = solveVICentrFB(VI, 10^5, 10^(-4), ...
+            [u_full_traj_ol(:,:,:,t), res, solved(t)] = solveVICentrFB(VI, 10^5, 10^(-4), ...
                 0.001, 0.001, u_ol_warm_start, dual_warm_start);
             u_ol(:,:,:,t) = u_full_traj_ol(1:n_u,:,:,t);
             x_ol(:,:,t+1) = evolveState(x_ol(:,:,t), game.A, game.B, u_ol(:, :,:, t), 1, n_u);

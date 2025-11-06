@@ -1,4 +1,4 @@
-function [C_x, d_x, C_u, d_u] = defineConstraints(N, n_x, n_u)
+function [C_x, d_x, C_u, d_u, C_u_mix, C_x_mix, d_mix] = defineConstraints(N, n_x, n_u)
 
     min_u = -ones(n_u, 1, N); 
     max_u = ones(n_u, 1, N);
@@ -13,5 +13,8 @@ function [C_x, d_x, C_u, d_u] = defineConstraints(N, n_x, n_u)
         C_u(:,:,i) = [-eye(n_u); eye(n_u)];
         d_u(:,:,i) = [-min_u(:,:,i); max_u(:,:,i)]; 
     end
+    C_u_mix = zeros(1,n_u, N);
+    C_x_mix = zeros(1,n_x);
+    d_mix = zeros(1,1);
 end
 
